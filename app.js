@@ -212,6 +212,7 @@ window.handleAuthSubmit = async function(e) {
     }
     catch (err) {
       if (verifyError) {
+        console.error('Kayıt hatası:', err);
         verifyError.textContent = err.message;
         verifyError.style.display = 'block';
       }
