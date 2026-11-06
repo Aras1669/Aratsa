@@ -182,7 +182,7 @@ window.handleAuthSubmit = async function(e) {
 
     try {
       // .js uzantısı kaldırıldı -> Doğru Rota: /api/auth/register
-      const response = await fetch('/api/auth/register', {
+      const response = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
