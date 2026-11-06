@@ -180,35 +180,43 @@ window.handleAuthSubmit = async function(e) {
   submitBtn.disabled = true;
   submitBtn.textContent = 'Bulut sunucuya bağlanıyor...';
 
-  try {
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
+    try {
+      // .js uzantısı kaldırıldı -> Doğru Rota: /api/auth/register
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: pendingRegistration.email,
+          password: pendingRegistration.password,
+          username: pendingRegistration.username
+        })
+      });
 
-    const result = await response.json();
+      const result = await response.json();
 
-    if (!response.ok) {
-      throw new Error(result.error || 'Giriş yapılamadı!');
+      if (!response.ok) {
+        throw new Error(result.error || 'Kayıt işlemi başarısız oldu.');
+      }
+
+      currentUser = result.user;
+      localStorage.setItem('aratsa_current_user', JSON.stringify(currentUser));
+
+      pendingRegistration = null;
+      cancelVerification();
+      closeAuthModal();
+      updateUIForUser();
+      closeGuestBarrier();
+      renderPosts();
+
+      showToast('Tebrikler! E-posta adresiniz doğrulandı ve bulut hesabınız açıldı.');
+    }
+    catch (err) {
+      if (verifyError) {
+        verifyError.textContent = err.message;
+        verifyError.style.display = 'block';
+      }
     }
 
-    currentUser = result.user;
-    localStorage.setItem('aratsa_current_user', JSON.stringify(currentUser));
-
-    closeAuthModal();
-    document.getElementById('auth-form').reset();
-    updateUIForUser();
-    closeGuestBarrier();
-    renderPosts();
-    showToast(`Hoş geldin, ${currentUser.username}!`);
-  } catch (err) {
-    errorElem.textContent = err.message;
-    errorElem.style.display = 'block';
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = 'Giriş Yap';
-  }
 };
 
 // Onay Kodunu Doğrulama ve Cloudflare KV'ye Kayıt (/api/auth/register)
