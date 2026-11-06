@@ -181,27 +181,35 @@ window.handleAuthSubmit = async function(e) {
   submitBtn.textContent = 'Bulut sunucuya bağlanıyor...';
 
     try {
-    // .js uzantısı kaldırıldı -> Doğru Rota: /api/auth/register (functions/api/auth/register.js'e bağlanır)[span_6](start_span)[span_6](end_span)[span_7](start_span)[span_7](end_span)
-    const response = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: pendingRegistration.email,
-        password: pendingRegistration.password,
-        username: pendingRegistration.username
-      })
-    });
+      // .js uzantısı kaldırıldı -> Doğru Rota: /api/auth/register
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: pendingRegistration.email,
+          password: pendingRegistration.password,
+          username: pendingRegistration.username
+        })
+      });
 
-    const result = await response.json();
+      const result = await response.json();
 
-    if (!response.ok) {
-      throw new Error(result.error || 'Kayıt işlemi başarısız oldu.');
+      if (!response.ok) {
+        throw new Error(result.error || 'Kayıt işlemi başarısız oldu.');
+      }
+
+      currentUser = result.user;
+      localStorage.setItem('aratsa_current_user', JSON.stringify(currentUser));
+
+      pendingRegistration = null;
+      cancelVerification();
+      closeAuthModal();
+      updateUIForUser();
+      closeGuestBarrier();
+      renderPosts();
+
+      showToast('Tebrikler! E-posta adresiniz doğrulandı ve bulut hesabınız açıldı.');
     }
-
-    currentUser = result.user;
-    localStorage.setItem('aratsa_current_user', JSON.stringify(currentUser));
-    // ... (devamı aynı kalabilir)
-
     catch (err) {
       if (verifyError) {
         verifyError.textContent = err.message;
