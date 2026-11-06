@@ -181,7 +181,7 @@ window.handleAuthSubmit = async function(e) {
   submitBtn.textContent = 'Bulut sunucuya bağlanıyor...';
 
   try {
-    const response = await fetch('/api/auth/login', {
+    const response = await fetch('/api/auth/login.js', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
@@ -232,7 +232,7 @@ window.confirmVerificationCode = async function() {
 
   try {
     // Cloudflare Workers KV / D1 kayıt isteği
-    const response = await fetch('/api/auth/register', {
+    const response = await fetch('/api/auth/register.js', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
