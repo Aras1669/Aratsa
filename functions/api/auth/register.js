@@ -1,6 +1,6 @@
 /**
  * Aratsa Projesi - Register (Kayıt Ol) Fonksiyonu
- * Hem JSON hem FormData destekleyen, Türkçe/İngilizce anahtar uyumlu güvenli kayıt servisi.
+ * Ultra-Dayanıklı Veri Ayrıştırıcı ve Base64 Şifreleme Modülü
  */
 
 // Güvenli Base64 kodlama fonksiyonu
@@ -17,7 +17,7 @@ export async function onRequestPost(context) {
   try {
     const { request, env } = context;
 
-    // 1. KV Kontrolü
+    // 1. Cloudflare Workers KV binding kontrolü
     if (!env.USERS_KV) {
       return new Response(JSON.stringify({ error: "Sistem Hatası: USERS_KV Namespace tanımlanmamış." }), {
         status: 500,
@@ -25,43 +25,54 @@ export async function onRequestPost(context) {
       });
     }
 
-    // 2. Gelen verinin türünü (Content-Type) tespit et ve güvenli şekilde parse et
-    let body = {};
-    const contentType = request.headers.get("content-type") || "";
+    // 2. Gelen isteğin gövdesini (body) hiçbir kısıtlamaya takılmadan ham metin olarak al
+    let rawText = "";
+    try {
+      rawText = await request.text();
+    } catch (e) {
+      rawText = "";
+    }
 
-    if (contentType.includes("application/json")) {
+    let body = {};
+    if (rawText) {
+      // Önce JSON olarak parse etmeyi dene
       try {
-        body = await request.json();
-      } catch (e) {
-        body = {};
-      }
-    } else if (contentType.includes("form") || contentType.includes("multipart")) {
-      const formData = await request.formData();
-      body = Object.fromEntries(formData);
-    } else {
-      // Varsayılan olarak JSON denemesi yapalım
-      try {
-        body = await request.json();
-      } catch (e) {
-        body = {};
+        body = JSON.parse(rawText);
+      } catch (e1) {
+        // JSON olmazsa URL-encoded form verisi (name=ali&mail=...) olarak dene
+        try {
+          const urlParams = new URLSearchParams(rawText);
+          body = Object.fromEntries(urlParams.entries());
+        } catch (e2) {
+          body = {};
+        }
       }
     }
 
-    // 3. Farklı anahtar kombinasyonlarını esnek bir şekilde yakala (Türkçe veya İngilizce gelebilir)
-    const isim = body.isim || body.name || body.username || body.kullaniciAdi;
-    const mail = body.mail || body.email;
-    const şifre = body.şifre || body.sifre || body.password;
+    // Eğer hala boşsa standart FormData olarak okumayı dene
+    if (Object.keys(body).length === 0) {
+      try {
+        const formData = await request.formData();
+        body = Object.fromEntries(formData.entries());
+      } catch (e3) {}
+    }
 
-    // 4. Eksik bilgi kontrolü (Hangi alanın eksik olduğunu detaylı görmek için loglanabilir)
+    // 3. Ön yüzden gelebilecek tüm olası anahtar adlarını esnekçe yakala
+    const isim = body.isim || body.name || body.username || body.kullaniciAdi || body.kullanici_adi;
+    const mail = body.mail || body.email || body.eposta;
+    const şifre = body.şifre || body.sifre || body.password || body.pass;
+
+    // 4. Eksik bilgi kontrolü ve hata durumunda detaylı debug bilgisi döndür
     if (!isim || !mail || !şifre) {
       return new Response(JSON.stringify({ 
         error: "Eksik bilgi: İsim, mail ve şifre alanları zorunludur.",
-        debug: { 
-          gelenVeri: body,
-          eksikAlanlar: {
-            isim: !isim,
-            mail: !mail,
-            şifre: !şifre
+        debug: {
+          gelenHamMetin: rawText,
+          cozulenBody: body,
+          tespitEdilenAlanlar: {
+            isimVarmi: !!isim,
+            mailVarmi: !!mail,
+            sifreVarmi: !!şifre
           }
         }
       }), {
@@ -78,7 +89,7 @@ export async function onRequestPost(context) {
       });
     }
 
-    // 6. Daha önce kayıt olunmuş mu?
+    // 6. Daha önce kayıt olunmuş mu kontrol et
     const existingUser = await env.USERS_KV.get(mail);
     if (existingUser) {
       return new Response(JSON.stringify({ error: "Bu e-posta adresi ile zaten bir hesap mevcut." }), {
@@ -87,10 +98,11 @@ export async function onRequestPost(context) {
       });
     }
 
-    // 7. Benzersiz ID ve Base64 Şifreleme
+    // 7. Benzersiz ID oluştur ve şifreyi Base64 ile kodla
     const id = "usr_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
     const encodedPassword = encodeBase64(şifre);
 
+    // 8. KV içerisine kaydedilecek format: id, isim, mail, şifre
     const userData = {
       id: id,
       isim: isim,
@@ -98,13 +110,18 @@ export async function onRequestPost(context) {
       şifre: encodedPassword
     };
 
-    // 8. KV Veritabanına Yazma
+    // 9. Cloudflare Workers KV'ye yaz
     await env.USERS_KV.put(mail, JSON.stringify(userData));
 
+    // 10. Başarılı yanıt
     return new Response(JSON.stringify({
       success: true,
       message: "Kayıt başarıyla oluşturuldu.",
-      user: { id, isim, mail }
+      user: {
+        id: id,
+        isim: isim,
+        mail: mail
+      }
     }), {
       status: 201,
       headers: { "Content-Type": "application/json" }
