@@ -1,7 +1,9 @@
 import { getUser } from '../_lib.js';
+import { purgeDue } from '../_cloud.js';
 // Cloudflare Pages Function: /api/posts (Cloudinary Kullanıcı Klasörlü + Günlük Sınır)
 export async function onRequestGet(context) {
   const { env } = context;
+  context.waitUntil?.(purgeDue(env));
   try {
     if (env && env.DB) {
       const { results } = await env.DB.prepare(

@@ -1,5 +1,6 @@
 // /api/react: beğeni, yorum, silme, şikayet (hepsi oturum token'ı ister)
 import { json, readBody, getUser } from '../_lib.js';
+import { parseCloudinary } from '../_cloud.js';
 
 export async function onRequestPost({ request, env }) {
   const user = await getUser(request, env);
@@ -31,6 +32,8 @@ export async function onRequestPost({ request, env }) {
   }
   if (action === 'delete') {
     if (post.user_id !== user.id) return json({ error: 'Sadece kendi gönderini silebilirsin.' }, 403);
+    const job = parseCloudinary(post.media_url);
+    if (job) await env.POSTS_KV.put('purge:' + id, JSON.stringify({ ...job, at: Date.now() + 864e5 }));
     await env.POSTS_KV.put('all_posts', JSON.stringify(posts.filter((p) => p.id !== id)));
     return json({ success: true });
   }

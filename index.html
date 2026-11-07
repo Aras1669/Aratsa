@@ -4,7 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Aratsa</title>
-  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <link rel="icon" href="icon-light.png" type="image/png" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="icon-dark.png" type="image/png" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
@@ -30,7 +33,7 @@
         <button type="button" class="nav-item" onclick="handleNavClick('reels', this)">
           <i class="fa-solid fa-clapperboard"></i> <span>Reels</span>
         </button>
-        <button type="button" class="nav-item" onclick="showToast('Direkt mesajlar yakında!')">
+        <button type="button" class="nav-item" onclick="openDM()">
           <i class="fa-regular fa-paper-plane"></i> <span>Mesajlar</span>
         </button>
         <button type="button" class="nav-item" onclick="handleNavClick('notifications', this)">
@@ -116,7 +119,7 @@
         <form id="auth-form" onsubmit="handleAuthSubmit(event)">
           <div class="form-group" id="group-username" style="display: none;">
             <label>Kullanıcı Adı:</label>
-            <input type="text" id="auth-username" placeholder="kullanici_adi">
+            <input type="text" id="auth-username" placeholder="kullanici_adi (a-z, 0-9, _ ve .)" maxlength="20" autocomplete="off" autocapitalize="off">
           </div>
           <div class="form-group">
             <label>E-posta Adresi:</label>
@@ -230,6 +233,31 @@
   <div class="modal-overlay" id="panel-modal"><div class="modal-box">
     <div class="modal-header"><h3 id="panel-title"></h3><button type="button" class="close-modal-btn" onclick="closePanel()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="modal-body" id="panel-body"></div>
+  </div></div>
+
+  <!-- YORUMLAR PANELİ -->
+  <div class="modal-overlay" id="comments-modal"><div class="modal-box">
+    <div class="modal-header"><h3>Yorumlar</h3><button type="button" class="close-modal-btn" onclick="closeCommentsModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="modal-body">
+      <div class="comments-list" id="comments-modal-list"></div>
+      <form class="dm-form" onsubmit="event.preventDefault(); submitPanelComment();"><input id="comments-input" placeholder="Yorum ekle..." maxlength="500" autocomplete="off"><button type="submit" class="primary-btn">Paylaş</button></form>
+    </div>
+  </div></div>
+
+  <!-- MESAJLAR -->
+  <div class="modal-overlay" id="dm-modal"><div class="modal-box dm-box">
+    <div class="modal-header"><button type="button" class="close-modal-btn" id="dm-back" onclick="dmBack()" style="display:none"><i class="fa-solid fa-arrow-left"></i></button><h3 id="dm-title">Mesajlar</h3><button type="button" class="close-modal-btn" onclick="closeDM()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="modal-body">
+      <div id="dm-list-view">
+        <form class="dm-form" onsubmit="event.preventDefault(); dmOpenFromInput();"><input id="dm-user-input" placeholder="Kullanıcı adı yaz..." autocomplete="off" autocapitalize="off"><button type="submit" class="primary-btn">Mesaj</button></form>
+        <div id="dm-convos"></div>
+        <p class="dm-note"><i class="fa-solid fa-lock"></i> Mesajlar uçtan uca şifrelidir; sunucuda yalnızca şifreli hali saklanır.</p>
+      </div>
+      <div id="dm-chat-view" style="display:none">
+        <div class="dm-thread" id="dm-thread"></div>
+        <form class="dm-form" onsubmit="event.preventDefault(); dmSend();"><input id="dm-input" placeholder="Mesaj yaz..." maxlength="1000" autocomplete="off"><button type="submit" class="primary-btn"><i class="fa-solid fa-paper-plane"></i></button></form>
+      </div>
+    </div>
   </div></div>
 
   <div id="toast-container" class="toast-container"></div>

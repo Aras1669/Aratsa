@@ -155,8 +155,8 @@ window.handleAuthSubmit = async function(e) {
 
   // 1. KAYIT OLMA ADIMI: Önce 6 Haneli E-posta Onay Kodu Simülasyonu
   if (currentAuthTab === 'register') {
-    if (!/^[\p{L}0-9_.]{3,20}$/u.test(username)) {
-      errorElem.textContent = 'Kullanıcı adı 3-20 karakter olmalı (harf, rakam, _ veya .).';
+    if (!/^(?!\.)(?!.*\.\.)(?!.*\.$)[A-Za-z0-9_.]{3,20}$/.test(username)) {
+      errorElem.textContent = 'Kullanıcı adı 3-20 karakter olmalı; yalnızca harf (a-z), rakam, _ ve . kullanılabilir (tire ve boşluk yok).';
       errorElem.style.display = 'block';
       return;
     }
@@ -512,7 +512,7 @@ function createPostElement(post) {
         <button type="button" class="action-btn like-btn ${isLiked ? 'liked' : ''}" data-liked="${isLiked}">
           <i class="${isLiked ? 'fa-solid' : 'fa-regular'} fa-heart"></i>
         </button>
-        <button type="button" class="action-btn comment-btn" onclick="focusComment('${post.id}')"><i class="fa-regular fa-comment"></i></button>
+        <button type="button" class="action-btn comment-btn" onclick="openComments('${post.id}')"><i class="fa-regular fa-comment"></i></button>
         <button type="button" class="action-btn share-btn" onclick="sharePost('${post.id}')"><i class="fa-regular fa-paper-plane"></i></button>
       </div>
       <button type="button" class="action-btn save-btn"><i class="fa-regular fa-bookmark"></i></button>
@@ -525,7 +525,7 @@ function createPostElement(post) {
       <span class="caption-text">${escapeHtml(post.caption || '')}</span>
     </div>
 
-    <div class="post-comments" id="comments-list-${post.id}"></div>
+    <button type="button" class="view-comments" onclick="openComments('${post.id}')">Yorumlar</button>
 
     <form class="comment-form" onsubmit="event.preventDefault(); submitComment('${post.id}', this);">
       <input type="text" placeholder="Yorum ekle..." class="comment-input" id="comment-input-${post.id}">
@@ -618,7 +618,7 @@ window.closeLegalModal = function() {
 
 function initGuestScrollObserver() {
   window.addEventListener('scroll', () => {
-    if (currentUser) return;
+    if (currentUser || feedFilter === 'reels') return;
     const visiblePosts = document.querySelectorAll('.post-card');
     if (visiblePosts.length > CONFIG.GUEST_POST_LIMIT) {
       const secondPost = visiblePosts[CONFIG.GUEST_POST_LIMIT - 1];
@@ -706,7 +706,10 @@ function timeAgo(iso) {
 function getVisiblePosts() {
   let list = posts.slice();
   if (feedFilter === 'mine') list = list.filter(p => p.user_id === currentUser?.id);
-  if (feedFilter === 'reels') list = list.filter(p => p.media_type === 'video' || /\.(mp4|webm|mov)$/i.test(p.media_url || ''));
+  if (feedFilter === 'reels') {
+    list = list.filter(isReel).sort((a, b) => (b.likes_count || 0) - (a.likes_count || 0));
+    if (!currentUser) list = list.slice(0, GUEST_REELS_LIMIT);
+  }
   if (feedFilter === 'explore') list.sort((a, b) => (b.likes_count || 0) - (a.likes_count || 0));
   if (searchQuery) {
     const q = searchQuery.toLowerCase();
@@ -718,7 +721,7 @@ function getVisiblePosts() {
 function updateFilterBar() {
   const bar = document.getElementById('filter-bar');
   if (!bar) return;
-  const names = { mine: 'Gönderilerim', reels: 'Reels', explore: 'Keşfet (en çok beğenilenler)' };
+  const names = { mine: 'Gönderilerim', reels: 'Reels (en çok beğenilenler)', explore: 'Keşfet (en çok beğenilenler)' };
   const label = searchQuery ? `Arama: “${searchQuery}”` : names[feedFilter];
   bar.style.display = label ? 'flex' : 'none';
   bar.innerHTML = label ? `<span>${escapeHtml(label)}</span><button type="button" class="auth-action-link" onclick="handleNavClick('home')">Temizle</button>` : '';
@@ -730,14 +733,14 @@ function openPanel(title, html, onReady) {
   document.getElementById('panel-modal').style.display = 'flex';
   onReady?.();
 }
-window.closePanel = () => { document.getElementById('panel-modal').style.display = 'none'; };
+window.closePanel = () => { document.getElementById('panel-modal').style.display = 'none'; document.body.classList.remove('searching'); };
 
 window.handleNavClick = function(section, btn) {
   if (section === 'search') {
     return openPanel('Ara', `<input type="search" id="search-input" class="comment-input" style="width:100%" placeholder="Kullanıcı veya açıklama ara..." value="${escapeHtml(searchQuery)}">`, () => {
       const input = document.getElementById('search-input');
       input.focus();
-      input.addEventListener('input', () => { searchQuery = input.value.trim(); renderPosts(); });
+      input.addEventListener('input', () => { searchQuery = input.value.trim(); document.body.classList.add('searching'); renderPosts(); });
       input.addEventListener('keydown', e => { if (e.key === 'Enter') closePanel(); });
     });
   }
@@ -796,8 +799,7 @@ function commentEl(c) {
 }
 
 function hydrateCard(card, post) {
-  const list = card.querySelector('.post-comments');
-  (post.comments || []).forEach(c => list.appendChild(commentEl(c)));
+  decorateCard(card, post);
 
   const key = 'aratsa_saved_' + (currentUser?.id || 'guest');
   const read = () => { try { return JSON.parse(localStorage.getItem(key)) || []; } catch { return []; } };
@@ -812,23 +814,6 @@ function hydrateCard(card, post) {
   });
 }
 
-window.submitComment = async function(postId, form) {
-  if (!requireAuth('Yorum yapmak')) return;
-  const input = form.querySelector('.comment-input');
-  const text = input.value.trim();
-  if (!text) return;
-  input.disabled = true;
-  try {
-    const { comment } = await react({ action: 'comment', id: postId, text });
-    const post = posts.find(p => p.id === postId);
-    if (post) (post.comments ||= []).push(comment);
-    document.getElementById(`comments-list-${postId}`)?.appendChild(commentEl(comment));
-    input.value = '';
-  } catch (err) {
-    showToast(err.message);
-  }
-  input.disabled = false;
-};
 
 window.openPostOptions = function(postId) {
   currentActivePostId = postId;
@@ -883,3 +868,277 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') document.querySelectorAll('.modal-overlay').forEach(m => { if (m.id !== 'guest-barrier-modal') m.style.display = 'none'; });
 });
+
+/* =========================================================
+   7. YORUM PANELİ, REELS, TAKİP, ŞİFRELİ MESAJLAR
+   ========================================================= */
+const GUEST_REELS_LIMIT = 5;
+const isReel = p => p.media_type === 'video' || /\.(mp4|webm|mov)$/i.test(p.media_url || '');
+const me = () => String(currentUser?.username || '').toLowerCase();
+let commentsPostId = null;
+let myFollowing = new Set();
+let myFollowers = [];
+
+// ---- Yorumlar: akışta sadece "Yorumlar (n)" yazar, tıklayınca panel açılır ----
+function setCommentCount(card, post) {
+  const n = (post.comments || []).length;
+  const b = card.querySelector('.view-comments');
+  if (b) b.textContent = n ? `Yorumlar (${n})` : 'Yorumlar';
+}
+
+async function addComment(postId, text) {
+  const { comment } = await react({ action: 'comment', id: postId, text });
+  const post = posts.find(p => p.id === postId);
+  if (post) (post.comments ||= []).push(comment);
+  document.querySelectorAll(`[data-post-id="${postId}"]`).forEach(card => setCommentCount(card, post));
+}
+
+window.submitComment = async function(postId, form) {
+  if (!requireAuth('Yorum yapmak')) return;
+  const input = form.querySelector('.comment-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.disabled = true;
+  try { await addComment(postId, text); input.value = ''; showToast('Yorumun eklendi'); }
+  catch (err) { showToast(err.message); }
+  input.disabled = false;
+};
+
+function renderCommentsPanel() {
+  const post = posts.find(p => p.id === commentsPostId);
+  const box = document.getElementById('comments-modal-list');
+  box.innerHTML = '';
+  (post?.comments || []).forEach(c => box.appendChild(commentEl(c)));
+  if (!box.children.length) box.innerHTML = '<p class="dm-note">Henüz yorum yok. İlk yorumu sen yaz!</p>';
+  box.scrollTop = box.scrollHeight;
+}
+window.openComments = function(id) {
+  commentsPostId = id;
+  renderCommentsPanel();
+  document.getElementById('comments-modal').style.display = 'flex';
+  document.getElementById('comments-input').focus();
+};
+window.closeCommentsModal = () => { document.getElementById('comments-modal').style.display = 'none'; };
+window.submitPanelComment = async function() {
+  if (!requireAuth('Yorum yapmak')) return;
+  const input = document.getElementById('comments-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.disabled = true;
+  try { await addComment(commentsPostId, text); input.value = ''; renderCommentsPanel(); }
+  catch (err) { showToast(err.message); }
+  input.disabled = false;
+  input.focus();
+};
+
+// ---- Takip ----
+function decorateCard(card, post) {
+  setCommentCount(card, post);
+  const u = String(post.username || '').toLowerCase();
+  if (u && u !== me()) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'follow-btn'; b.dataset.user = u;
+    b.onclick = () => toggleFollow(u);
+    card.querySelector('.author-details')?.appendChild(b);
+  }
+}
+function refreshFollow() {
+  document.querySelectorAll('.follow-btn').forEach(b => {
+    const on = myFollowing.has(b.dataset.user);
+    b.classList.toggle('following', on);
+    b.textContent = on ? 'Takiptesin' : 'Takip Et';
+  });
+  const c = document.getElementById('follow-counts');
+  if (c) c.textContent = `${myFollowers.length} takipçi • ${myFollowing.size} takip`;
+}
+async function loadFollow() {
+  myFollowing = new Set(); myFollowers = [];
+  if (currentUser) {
+    try {
+      const r = await fetch('/api/follow', { headers: authHeaders() });
+      if (r.ok) { const d = await r.json(); myFollowing = new Set(d.following); myFollowers = d.followers; }
+    } catch {}
+  }
+  refreshFollow();
+}
+window.toggleFollow = async function(user) {
+  if (!requireAuth('Takip etmek')) return;
+  const action = myFollowing.has(user) ? 'unfollow' : 'follow';
+  try {
+    const r = await fetch('/api/follow', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ target: user, action }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    action === 'follow' ? myFollowing.add(user) : myFollowing.delete(user);
+    refreshFollow();
+    showToast(action === 'follow' ? `@${user} takip ediliyor` : `@${user} takipten çıkarıldı`);
+  } catch (err) { showToast(err.message || 'İşlem başarısız.'); }
+};
+
+// ---- Sağ panel (misafir: Giriş Yap + Kayıt Ol), videoların otomatik oynaması, Reels sınırı ----
+function decorateAccountBox() {
+  const box = document.getElementById('sidebar-account-box');
+  if (!box) return;
+  if (!currentUser) {
+    box.innerHTML = `<div class="account-avatar"><i class="fa-solid fa-user"></i></div>
+      <div class="account-meta"><span class="user-status">Misafir Kullanıcı</span><span class="user-sub">Gönderi paylaşmak için oturum açın</span></div>
+      <div class="account-btn-group"><button type="button" class="auth-action-link" onclick="openAuthModal('login')">Giriş Yap</button><span class="divider">•</span><button type="button" class="auth-action-link highlight" onclick="openAuthModal('register')">Kayıt Ol</button></div>`;
+  } else {
+    box.querySelector('.account-meta')?.insertAdjacentHTML('beforeend', '<span class="user-sub" id="follow-counts"></span>');
+  }
+}
+
+const videoIO = new IntersectionObserver(entries => entries.forEach(e => {
+  if (e.isIntersecting && e.intersectionRatio > 0.6) e.target.play().catch(() => {}); else e.target.pause();
+}), { threshold: [0, 0.6] });
+
+function addReelsGate() {
+  document.querySelectorAll('.guest-gate').forEach(e => e.remove());
+  if (feedFilter !== 'reels' || currentUser) return;
+  const rest = posts.filter(isReel).length - GUEST_REELS_LIMIT;
+  if (rest <= 0) return;
+  const g = document.createElement('div');
+  g.className = 'guest-gate';
+  g.innerHTML = `<i class="fa-solid fa-lock"></i><h3>${rest} reels daha seni bekliyor</h3><p>Hepsini izlemek için giriş yap veya kayıt ol.</p><button type="button" class="primary-btn" onclick="openAuthModal('register')">Kayıt Ol</button>`;
+  document.getElementById('posts-stream').appendChild(g);
+}
+
+const _renderPosts = renderPosts;
+renderPosts = function() {
+  _renderPosts();
+  document.querySelectorAll('.post-media-container video').forEach(v => { v.muted = true; v.loop = true; videoIO.observe(v); });
+  addReelsGate();
+  refreshFollow();
+};
+
+const _updateUI = updateUIForUser;
+updateUIForUser = function() {
+  _updateUI();
+  decorateAccountBox();
+  Object.keys(peerKeys).forEach(k => delete peerKeys[k]);
+  myPair = null;
+  loadFollow();
+  if (currentUser) ensureKeys().catch(() => {});
+};
+
+// ---- Şifreli mesajlar: ECDH (P-256) ile ortak anahtar + AES-GCM. Özel anahtar bu cihazda kalır ----
+const b64e = b => btoa(String.fromCharCode(...new Uint8Array(b)));
+const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const ECDH = { name: 'ECDH', namedCurve: 'P-256' };
+const peerKeys = {};
+let myPair = null, dmPeer = null, dmTimer = null;
+
+async function ensureKeys() {
+  if (myPair) return myPair;
+  const k = 'aratsa_e2e_' + currentUser.id;
+  try { myPair = JSON.parse(localStorage.getItem(k)); } catch {}
+  if (!myPair) {
+    const kp = await crypto.subtle.generateKey(ECDH, true, ['deriveKey']);
+    myPair = { priv: await crypto.subtle.exportKey('jwk', kp.privateKey), pub: await crypto.subtle.exportKey('jwk', kp.publicKey) };
+    localStorage.setItem(k, JSON.stringify(myPair));
+  }
+  const r = await fetch('/api/keys?u=' + encodeURIComponent(currentUser.username));
+  const srv = r.ok ? await r.json() : {};
+  if (srv.x !== myPair.pub.x || srv.y !== myPair.pub.y) {
+    await fetch('/api/keys', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ jwk: myPair.pub }) });
+  }
+  return myPair;
+}
+
+async function aesKey(peer) {
+  if (peerKeys[peer]) return peerKeys[peer];
+  const { priv } = await ensureKeys();
+  const r = await fetch('/api/keys?u=' + encodeURIComponent(peer));
+  if (!r.ok) throw new Error('Bu kullanıcı şifreli mesajlaşmayı henüz açmamış (bir kez giriş yapması gerekir).');
+  const pub = await crypto.subtle.importKey('jwk', await r.json(), ECDH, false, []);
+  const sk = await crypto.subtle.importKey('jwk', priv, ECDH, false, ['deriveKey']);
+  return (peerKeys[peer] = await crypto.subtle.deriveKey({ name: 'ECDH', public: pub }, sk, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']));
+}
+
+async function dmDecrypt(m) {
+  try {
+    const key = await aesKey(dmPeer);
+    return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(m.iv) }, key, b64d(m.ct)));
+  } catch { return '🔒 Bu mesaj bu cihazda çözülemedi'; }
+}
+
+async function dmLoad() {
+  if (!dmPeer || document.getElementById('dm-modal').style.display === 'none') return clearInterval(dmTimer);
+  try {
+    const r = await fetch('/api/messages?with=' + encodeURIComponent(dmPeer), { headers: authHeaders() });
+    const { msgs = [] } = await r.json();
+    const th = document.getElementById('dm-thread');
+    if (th.dataset.n === String(msgs.length)) return;
+    const texts = await Promise.all(msgs.map(dmDecrypt));
+    th.dataset.n = String(msgs.length);
+    th.innerHTML = '';
+    msgs.forEach((m, i) => {
+      const d = document.createElement('div');
+      d.className = 'dm-msg' + (m.from === me() ? ' me' : '');
+      d.textContent = texts[i];
+      th.appendChild(d);
+    });
+    if (!msgs.length) th.innerHTML = '<p class="dm-note">Henüz mesaj yok. Merhaba de!</p>';
+    th.scrollTop = th.scrollHeight;
+  } catch {}
+}
+
+function dmShow(view) {
+  const chat = view === 'chat';
+  clearInterval(dmTimer);
+  if (!chat) dmPeer = null;
+  document.getElementById('dm-list-view').style.display = chat ? 'none' : 'block';
+  document.getElementById('dm-chat-view').style.display = chat ? 'block' : 'none';
+  document.getElementById('dm-back').style.display = chat ? 'inline-flex' : 'none';
+  document.getElementById('dm-title').textContent = chat ? '@' + dmPeer : 'Mesajlar';
+}
+
+window.openDM = async function() {
+  if (!requireAuth('Mesajları görmek')) return;
+  document.getElementById('dm-modal').style.display = 'flex';
+  dmShow('list');
+  try { await ensureKeys(); } catch {}
+  const r = await fetch('/api/messages', { headers: authHeaders() });
+  const { conversations = {} } = await r.json().catch(() => ({}));
+  const names = Object.keys(conversations).sort((a, b) => conversations[b] - conversations[a]);
+  document.getElementById('dm-convos').innerHTML = names.length
+    ? names.map(n => `<button type="button" class="dm-convo" data-user="${escapeHtml(n)}" onclick="dmOpen(this.dataset.user)"><i class="fa-solid fa-circle-user"></i> ${escapeHtml(n)} <small>${timeAgo(conversations[n])}</small></button>`).join('')
+    : '<p class="dm-note">Henüz sohbet yok. Yukarıya bir kullanıcı adı yazıp başla.</p>';
+};
+window.dmBack = () => openDM();
+window.dmOpen = async function(name) {
+  dmPeer = String(name).toLowerCase();
+  dmShow('chat');
+  const th = document.getElementById('dm-thread');
+  th.innerHTML = ''; th.dataset.n = '';
+  await dmLoad();
+  dmTimer = setInterval(dmLoad, 4000);
+  document.getElementById('dm-input').focus();
+};
+window.dmOpenFromInput = function() {
+  const input = document.getElementById('dm-user-input');
+  const v = input.value.trim().replace(/^@/, '').toLowerCase();
+  if (!v) return;
+  if (v === me()) return showToast('Kendine mesaj gönderemezsin.');
+  input.value = '';
+  dmOpen(v);
+};
+window.dmSend = async function() {
+  const input = document.getElementById('dm-input');
+  const text = input.value.trim();
+  if (!text || !dmPeer) return;
+  input.disabled = true;
+  try {
+    const key = await aesKey(dmPeer);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(text));
+    const r = await fetch('/api/messages', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ to: dmPeer, iv: b64e(iv), ct: b64e(ct) }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    input.value = '';
+    document.getElementById('dm-thread').dataset.n = '';
+    await dmLoad();
+  } catch (err) { showToast(err.message || 'Mesaj gönderilemedi.'); }
+  input.disabled = false;
+  input.focus();
+};
+window.closeDM = () => { clearInterval(dmTimer); dmPeer = null; document.getElementById('dm-modal').style.display = 'none'; };
