@@ -156,7 +156,7 @@ window.handleAuthSubmit = async function(e) {
 
   // 1. KAYIT OLMA ADIMI: Önce 6 Haneli E-posta Onay Kodu Simülasyonu
   if (currentAuthTab === 'register') {
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const verificationCode = Math.floor(100 + Math.random() * 99).toString();
 
     pendingRegistration = {
       email: email.toLowerCase(),
