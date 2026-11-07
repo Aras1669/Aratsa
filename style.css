@@ -33,7 +33,7 @@ body { background-color: #fafafa; color: #262626; }
 .comment-input { flex: 1; border: none; outline: none; font-size: 13px; background: transparent; }
 .comment-submit { border: none; background: none; color: #0095f6; font-weight: 600; cursor: pointer; font-size: 13px; }
 .suggestions-sidebar { width: 300px; }
-.account-card { display: flex; align-items: center; gap: 10px; padding: 12px; background: #fff; border: 1px solid #dbdbdb; border-radius: 10px; margin-bottom: 24px; }
+.account-card { display: flex; align-items: center; gap: 10px; padding: 12px; background: #fff; border: 1px solid #dbdbdb; border-radius: 40px; margin-bottom: 24px; }
 .account-avatar { padding-left: 25px; padding-right: 20px; margin: 1px; width: 50px; height: 50px; border-radius: 25px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; }
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.65); justify-content: center; align-items: center; z-index: 1000; }
 .modal-box { background: #fff; border-radius: 14px; width: 440px; max-width: 90%; overflow: hidden; }
