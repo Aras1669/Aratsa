@@ -10,6 +10,7 @@ body { background-color: #fafafa; color: #262626; }
 .nav-item:hover { background-color: #f2f2f2; }
 .nav-item.active { font-weight: 700; }
 .main-content { flex: 1; display: flex; justify-content: center; padding: 30px 20px; gap: 50px; }
+.options-menu { padding: 15px; }
 .feed-wrapper { max-width: 470px; width: 100%; }
 .stories-container { display: flex; gap: 16px; overflow-x: auto; padding: 14px 10px; background: #fff; border: 1px solid #dbdbdb; border-radius: 8px; margin-bottom: 24px; }
 .story-item { display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
