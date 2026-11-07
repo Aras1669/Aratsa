@@ -87,9 +87,9 @@ export async function onRequestPost(context) {
       return postUserId === userId && postDate.startsWith(todayStr);
     }).length;
 
-    if (todaysUserPostsCount >= 100) {
+    if (todaysUserPostsCount >= 20) {
       return new Response(JSON.stringify({ 
-        error: "Günlük sınır aşıldı: Bir gün içerisinde en fazla 100 fotoğraf/gönderi paylaşabilirsiniz. Yarın tekrar deneyin." 
+        error: "Günlük sınır aşıldı: Bir gün içerisinde en fazla 20 fotoğraf/gönderi paylaşabilirsiniz. Yarın tekrar deneyin." 
       }), {
         status: 429, // Too Many Requests
         headers: { 'Content-Type': 'application/json' }
