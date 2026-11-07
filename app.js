@@ -60,7 +60,6 @@ function updateUIForUser() {
       sidebarSection.innerHTML = `
         <div class="logged-in-badge">
           <span class="logged-in-email"><i class="fa-solid fa-circle-user"></i> ${escapeHtml(username)}</span>
-          <button type="button" class="logout-btn" onclick="handleSignOut()">Çıkış Yap</button>
         </div>
       `;
     }
