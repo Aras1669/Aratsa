@@ -1,23 +1,14 @@
 /**
- * Aratsa Projesi - Login (Giriş Yap) Fonksiyonu
- * Girilen şifreyi Base64'e çevirerek KV'deki kayıtla kıyaslar.
+ * Aratsa Projesi - Akıllı Login (Giriş Yap) Fonksiyonu
+ * Ön yüzden gelen mail ve şifre verilerini esnekçe yakalayan, 
+ * Base64 doğrulaması yapan güvenli oturum açma servisi.
  */
-
-// Kayıt işlemindeki ile birebir aynı Base64 kodlama fonksiyonu
-function encodeBase64(str) {
-  const bytes = new TextEncoder().encode(str);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
 
 export async function onRequestPost(context) {
   try {
     const { request, env } = context;
 
-    // 1. Cloudflare Workers KV kontrolü
+    // 1. Cloudflare Workers KV binding kontrolü
     if (!env.USERS_KV) {
       return new Response(JSON.stringify({ error: "Sistem Hatası: USERS_KV Namespace tanımlanmamış." }), {
         status: 500,
@@ -25,19 +16,83 @@ export async function onRequestPost(context) {
       });
     }
 
-    // 2. İstek verisini oku
-    const body = await request.json();
-    const { mail, şifre } = body;
+    // 2. Gelen isteğin gövdesini ham metin olarak hiçbir kısıtlamaya takılmadan al
+    let rawText = "";
+    try {
+      rawText = await request.text();
+    } catch (e) {
+      rawText = "";
+    }
 
-    // 3. Parametre kontrolü
+    let body = {};
+    if (rawText) {
+      try {
+        body = JSON.parse(rawText);
+      } catch (e1) {
+        try {
+          body = Object.fromEntries(new URLSearchParams(rawText).entries());
+        } catch (e2) {
+          body = {};
+        }
+      }
+    }
+
+    if (Object.keys(body).length === 0) {
+      try {
+        const formData = await request.formData();
+        body = Object.fromEntries(formData.entries());
+      } catch (e3) {}
+    }
+
+    // 3. Olası standart anahtar isimlerini esnekçe yakala (Türkçe veya İngilizce)
+    let mail = body.mail || body.email || body.eposta;
+    let şifre = body.şifre || body.sifre || body.password || body.pass;
+
+    // 4. Akıllı Otomatik Eşleştirme (Eğer anahtarlar eşleşmediyse içeriğe göre bul)
+    const values = Object.values(body);
+    const keys = Object.keys(body);
+
+    // İçeriğinde '@' ve '.' geçen değeri mail olarak kabul et
+    if (!mail) {
+      const foundKey = keys.find(k => {
+        const val = String(body[k]);
+        return val.includes("@") && val.includes(".");
+      });
+      if (foundKey) mail = body[foundKey];
+    }
+
+    // Eğer hala eksik varsa ve değerler geldiyse sırasıyla dağıt
+    if ((!mail || !şifre) && values.length >= 2) {
+      for (const val of values) {
+        const strVal = String(val);
+        if (!mail && strVal.includes("@") && strVal.includes(".")) {
+          mail = strVal;
+        } else if (!şifre) {
+          şifre = strVal;
+        }
+      }
+    }
+
+    const unfilled = values.filter(v => v !== mail && v !== şifre);
+    if (!mail && unfilled.length > 0) mail = unfilled.shift();
+    if (!şifre && unfilled.length > 0) şifre = unfilled.shift();
+
+    // 5. Kesin eksiklik kontrolü ve hata durumunda detaylı debug bilgisi döndür
     if (!mail || !şifre) {
-      return new Response(JSON.stringify({ error: "Eksik bilgi: Mail ve şifre girilmelidir." }), {
+      return new Response(JSON.stringify({ 
+        error: "Eksik bilgi: Mail ve şifre alanları zorunludur.",
+        debug: {
+          gelenHamVeri: rawText,
+          cozulenBodyObjesi: body,
+          tespitEdilenler: { mail, şifre }
+        }
+      }), {
         status: 400,
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    // 4. KV deposundan kullanıcıyı e-posta (key) ile çağır
+    // 6. KV deposundan e-posta adresine karşılık gelen kullanıcı verisini çek
     const userDataString = await env.USERS_KV.get(mail);
     if (!userDataString) {
       return new Response(JSON.stringify({ error: "Geçersiz e-posta adresi veya şifre." }), {
@@ -48,8 +103,13 @@ export async function onRequestPost(context) {
 
     const user = JSON.parse(userDataString);
 
-    // 5. Girilen şifreyi Base64'e çevir ve veritabanındakiyle karşılaştır
-    const encodedInputPassword = encodeBase64(şifre);
+    // 7. Girilen şifreyi Base64 formatına çevir ve veritabanındakiyle karşılaştır
+    const bytes = new TextEncoder().encode(şifre);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const encodedInputPassword = btoa(binary);
 
     if (encodedInputPassword !== user.şifre) {
       return new Response(JSON.stringify({ error: "Geçersiz e-posta adresi veya şifre." }), {
@@ -58,7 +118,7 @@ export async function onRequestPost(context) {
       });
     }
 
-    // 6. Giriş başarılı, kullanıcı bilgilerini dön
+    // 8. Giriş başarılı, güvenli kullanıcı bilgilerini yanıt olarak dön
     return new Response(JSON.stringify({
       success: true,
       message: "Giriş başarılı.",
