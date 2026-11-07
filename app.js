@@ -82,7 +82,7 @@ function updateUIForUser() {
       sidebarAccountBox.innerHTML = `
         <div class="account-avatar"><i class="fa-solid fa-user"></i></div>
         <div class="account-meta">
-          <span class="user-status">Misafir Kullanıcı</span>
+          <span class="user-status" style="font-size: 14px;">Misafir Kullanıcı</span>
           <span class="user-sub" style="font-size: 10px;">Gönderi paylaşmak için oturum açın</span>
         </div>
         <div class="account-btn-group">
