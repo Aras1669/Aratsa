@@ -1,4 +1,4 @@
-// Cloudflare Pages Function: /api/posts (Cloudinary Entegrasyonlu)
+// Cloudflare Pages Function: /api/posts (Cloudinary + Günlük 100 Gönderi Sınırı)
 export async function onRequestGet(context) {
   const { env } = context;
   try {
@@ -39,7 +39,7 @@ export async function onRequestPost(context) {
 
     let body = {};
 
-    // 1. Veriyi JSON veya FormData olarak esnekçe oku
+    // 1. Gelen veriyi oku
     if (contentType.includes('application/json')) {
       body = await request.json();
       userId = body.user_id || body.userId || '';
@@ -49,35 +49,74 @@ export async function onRequestPost(context) {
       mediaType = body.media_type || 'image';
       if (body.id) postId = body.id;
       if (body.created_at) createdAt = body.created_at;
-
-      // Eğer JSON içinde base64 görsel verisi gönderildiyse Cloudinary'ye yükle
-      if (body.image_base64 && env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_UPLOAD_PRESET) {
-        const cldFormData = new FormData();
-        cldFormData.append('file', body.image_base64);
-        cldFormData.append('upload_preset', env.CLOUDINARY_UPLOAD_PRESET);
-
-        const cldRes = await fetch(
-          `https://api.cloudinary.com/v1_1/${env.CLOUDINARY_CLOUD_NAME}/image/upload`,
-          { method: 'POST', body: cldFormData }
-        );
-        const cldData = await cldRes.json();
-        if (cldData.secure_url) {
-          mediaUrl = cldData.secure_url;
-        } else {
-          throw new Error('Cloudinary yükleme hatası: ' + (cldData.error?.message || 'Bilinmeyen hata'));
-        }
-      }
     } else {
-      // Multipart form data (Dosya yükleme desteği)
       const formData = await request.formData();
       userId = formData.get('user_id') || formData.get('userId') || '';
       username = formData.get('username') || 'Anonim';
       caption = formData.get('caption') || '';
       mediaType = formData.get('media_type') || 'image';
+      mediaUrl = formData.get('media_url') || '';
+    }
 
+    // Kullanıcı ID kontrolü
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "Gönderi paylaşmak için yetkili bir kullanıcı ID'si gereklidir." }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // -----------------------------------------------------------------
+    // 2. GÜNLÜK 100 GÖNDERİ SINIRI KONTROLÜ
+    // -----------------------------------------------------------------
+    const todayStr = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD" formatı
+    let existingPosts = [];
+
+    if (env && env.POSTS_KV) {
+      const raw = await env.POSTS_KV.get('all_posts');
+      existingPosts = raw ? JSON.parse(raw) : [];
+    } else if (env && env.DB) {
+      const { results } = await env.DB.prepare('SELECT user_id, created_at FROM posts WHERE user_id = ?').bind(userId).all();
+      existingPosts = results || [];
+    }
+
+    // Kullanıcının bugün yaptığı paylaşımları say
+    const todaysUserPostsCount = existingPosts.filter(p => {
+      const postUserId = p.user_id || p.userId;
+      const postDate = p.created_at || '';
+      return postUserId === userId && postDate.startsWith(todayStr);
+    }).length;
+
+    if (todaysUserPostsCount >= 100) {
+      return new Response(JSON.stringify({ 
+        error: "Günlük sınır aşıldı: Bir gün içerisinde en fazla 100 fotoğraf/gönderi paylaşabilirsiniz. Yarın tekrar deneyin." 
+      }), {
+        status: 429, // Too Many Requests
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    // -----------------------------------------------------------------
+
+    // 3. Cloudinary Yükleme İşlemi (Eğer istek içinde dosya/base64 varsa)
+    if (contentType.includes('application/json') && body.image_base64 && env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_UPLOAD_PRESET) {
+      const cldFormData = new FormData();
+      cldFormData.append('file', body.image_base64);
+      cldFormData.append('upload_preset', env.CLOUDINARY_UPLOAD_PRESET);
+
+      const cldRes = await fetch(
+        `https://api.cloudinary.com/v1_1/${env.CLOUDINARY_CLOUD_NAME}/image/upload`,
+        { method: 'POST', body: cldFormData }
+      );
+      const cldData = await cldRes.json();
+      if (cldData.secure_url) {
+        mediaUrl = cldData.secure_url;
+      } else {
+        throw new Error('Cloudinary yükleme hatası: ' + (cldData.error?.message || 'Bilinmeyen hata'));
+      }
+    } else if (!contentType.includes('application/json')) {
+      const formData = await request.formData();
       const imageFile = formData.get('image') || formData.get('file') || formData.get('media');
 
-      // Eğer formdan doğrudan bir dosya geldiyse Cloudinary'ye yükle
       if (imageFile && env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_UPLOAD_PRESET) {
         const cldFormData = new FormData();
         cldFormData.append('file', imageFile);
@@ -93,12 +132,10 @@ export async function onRequestPost(context) {
         } else {
           throw new Error('Cloudinary yükleme hatası: ' + (cldData.error?.message || 'Bilinmeyen hata'));
         }
-      } else {
-        mediaUrl = formData.get('media_url') || '';
       }
     }
 
-    // 2. Kaydedilecek Post Nesnesi
+    // 4. Kaydedilecek Post Nesnesi
     const post = {
       id: postId,
       user_id: userId,
@@ -110,16 +147,14 @@ export async function onRequestPost(context) {
       created_at: createdAt
     };
 
-    // 3. Veritabanına (D1 veya KV) Kaydet
+    // 5. Veritabanına Kaydet
     if (env && env.DB) {
       await env.DB.prepare(
         'INSERT INTO posts (id, user_id, username, media_url, media_type, caption, likes_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       ).bind(post.id, post.user_id, post.username, post.media_url, post.media_type, post.caption, post.likes_count || 0, post.created_at).run();
     } else if (env && env.POSTS_KV) {
-      const raw = await env.POSTS_KV.get('all_posts');
-      const list = raw ? JSON.parse(raw) : [];
-      list.unshift(post);
-      await env.POSTS_KV.put('all_posts', JSON.stringify(list));
+      existingPosts.unshift(post);
+      await env.POSTS_KV.put('all_posts', JSON.stringify(existingPosts));
     }
 
     return new Response(JSON.stringify({ success: true, post }), {
