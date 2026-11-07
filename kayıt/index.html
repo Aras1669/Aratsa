@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aratsa</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+
+  <div class="app-container">
+    <!-- SOL KENAR ÇUBUĞU (SIDEBAR) -->
+    <aside class="sidebar">
+      <div class="logo">
+        <span class="logo-text">Aratsa</span>
+      </div>
+
+      <nav class="nav-menu">
+        <button type="button" class="nav-item active" onclick="handleNavClick('home')">
+          <i class="fa-solid fa-house"></i> <span>Ana Sayfa</span>
+        </button>
+        <button type="button" class="nav-item" onclick="showToast('Arama özelliği yakında eklenecek!')">
+          <i class="fa-solid fa-magnifying-glass"></i> <span>Ara</span>
+        </button>
+        <button type="button" class="nav-item" onclick="showToast('Keşfet akışı yakında!')">
+          <i class="fa-regular fa-compass"></i> <span>Keşfet</span>
+        </button>
+        <button type="button" class="nav-item" onclick="showToast('Reels video akışı yakında!')">
+          <i class="fa-solid fa-clapperboard"></i> <span>Reels</span>
+        </button>
+        <button type="button" class="nav-item" onclick="showToast('Direkt mesajlar yakında!')">
+          <i class="fa-regular fa-paper-plane"></i> <span>Mesajlar</span>
+        </button>
+        <button type="button" class="nav-item" onclick="showToast('Bildirim kutusu yakında!')">
+          <i class="fa-regular fa-heart"></i> <span>Bildirimler</span>
+        </button>
+        <button type="button" class="nav-item" id="nav-create-btn" onclick="handleCreatePostClick()">
+          <i class="fa-regular fa-square-plus"></i> <span>Oluştur</span>
+        </button>
+        <button type="button" class="nav-item" id="nav-profile-btn" onclick="handleProfileNavClick()">
+          <i class="fa-regular fa-user"></i> <span id="nav-profile-text">Giriş Yap</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-user" id="sidebar-user-section"></div>
+    </aside>
+
+    <!-- ANA İÇERİK (FEED) -->
+    <main class="main-content">
+      <div class="feed-wrapper">
+        
+        <!-- HİKAYELER (STORIES) -->
+        <section class="stories-container" id="stories-bar">
+          <div class="story-item" onclick="showToast('Hikaye yükleme özelliği yakında!')">
+            <div class="story-avatar-ring">
+              <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150" alt="Sen">
+            </div>
+            <span>Hikayen</span>
+          </div>
+        </section>
+
+        <!-- GÖNDERİLER AKIŞI -->
+        <section class="posts-stream" id="posts-stream">
+          <div class="empty-state" id="empty-state">
+            <i class="fa-solid fa-camera"></i>
+            <h3>Henüz Gönderi Yok</h3>
+            <p>Aratsa akışı şu an boş. Fotoğraf veya video yükleyerek ilk gönderiyi sen paylaş!</p>
+            <button type="button" class="primary-btn" id="empty-create-btn" onclick="handleCreatePostClick()">İlk Gönderiyi Paylaş</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- SAĞ KENAR -->
+      <aside class="suggestions-sidebar">
+        <div class="account-card" id="sidebar-account-box">
+          <div class="account-avatar"><i class="fa-solid fa-user"></i></div>
+          <div class="account-meta">
+            <span class="user-status" id="sidebar-account-title">Misafir Kullanıcı</span>
+            <span class="user-sub" id="sidebar-account-sub">Gönderi paylaşmak için oturum açın</span>
+          </div>
+          <div class="account-btn-group">
+            <button type="button" class="auth-action-link" onclick="openAuthModal('login')">Giriş Yap</button>
+            <span class="divider">•</span>
+            <button type="button" class="auth-action-link highlight" onclick="openAuthModal('register')">Kayıt Ol</button>
+          </div>
+        </div>
+
+        <div class="footer-meta">
+          <p><a href="javascript:void(0)" onclick="openLegalModal()" style="color: inherit; text-decoration: none;">Topluluk Kuralları • Yasal Haklar • Güvenlik</a></p>
+          <p class="copyright">© 2026 ARATSA • GÜVENLİ VE KORUMALI PLATFORM</p>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- GİRİŞ / KAYIT MODALI -->
+  <div class="modal-overlay" id="auth-modal">
+    <div class="modal-box auth-box">
+      <div class="modal-header">
+        <h3 id="auth-modal-title">Aratsa'ya Giriş Yap</h3>
+        <button type="button" class="close-modal-btn" onclick="closeAuthModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="auth-segmented-switch">
+          <button type="button" class="segmented-btn active" id="tab-login" onclick="switchAuthTab('login')">
+            <i class="fa-solid fa-right-to-bracket"></i> Giriş Yap
+          </button>
+          <button type="button" class="segmented-btn" id="tab-register" onclick="switchAuthTab('register')">
+            <i class="fa-solid fa-user-plus"></i> Kayıt Ol
+          </button>
+        </div>
+
+        <form id="auth-form" onsubmit="handleAuthSubmit(event)">
+          <div class="form-group" id="group-username" style="display: none;">
+            <label>Kullanıcı Adı:</label>
+            <input type="text" id="auth-username" placeholder="kullanici_adi">
+          </div>
+          <div class="form-group">
+            <label>E-posta Adresi:</label>
+            <input type="email" id="auth-email" placeholder="ornek@eposta.com" required>
+          </div>
+          <div class="form-group">
+            <label>Şifre:</label>
+            <input type="password" id="auth-password" placeholder="En az 6 karakter" required minlength="6">
+          </div>
+          <div class="legal-notice-box" id="legal-notice-box" style="display: none;">
+            <p class="legal-notice-text">
+              <i class="fa-solid fa-shield-check" style="color: #0095f6; margin-right: 4px;"></i>
+              Hesap açan herkes <strong>Aratsa Kullanım Koşulları ve Yasal Haklarını</strong> kabul etmiş sayılır.
+            </p>
+          </div>
+          <div class="auth-error-msg" id="auth-error"></div>
+          <button type="submit" class="primary-btn full-width" id="auth-submit-btn">Giriş Yap</button>
+        </form>
+
+        <div id="verify-step-box" style="display: none;">
+          <div class="verify-header">
+            <i class="fa-regular fa-envelope-open" style="font-size: 32px; color: #0095f6; margin-bottom: 8px;"></i>
+            <h4>E-posta Adresinizi Doğrulayın</h4>
+            <p id="verify-email-desc">E-posta adresinize 6 haneli onay kodu gönderdik:</p>
+          </div>
+          <div class="form-group" style="text-align: center;">
+            <input type="text" id="verify-code-input" maxlength="4" placeholder="0000" class="verify-code-field">
+          </div>
+          <div class="auth-error-msg" id="verify-error"></div>
+          <button type="button" class="primary-btn full-width" onclick="confirmVerificationCode()">Hesabı Onayla ve Giriş Yap</button>
+          <div style="text-align: center; margin-top: 12px;">
+            <button type="button" class="auth-action-link" onclick="resendVerificationCode()">Tekrar Gönder</button>
+            <span style="color:#ccc;"> • </span>
+            <button type="button" class="auth-action-link" onclick="cancelVerification()">Geri Dön</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEÇENEKLER MODALI -->
+  <div class="modal-overlay" id="post-options-modal">
+    <div class="modal-box options-box">
+      <div class="options-menu">
+        <button type="button" class="option-btn danger" id="opt-delete-btn" style="display: none;" onclick="confirmDeleteCurrentPost()">Gönderiyi Sil</button>
+        <button type="button" class="option-btn danger" onclick="openReportModalFromOptions()">Şikayet Et</button>
+        <button type="button" class="option-btn" onclick="copyCurrentPostLink()">Bağlantıyı Kopyala</button>
+        <button type="button" class="option-btn cancel" onclick="closePostOptionsModal()">İptal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- YENİ GÖNDERİ MODALI -->
+  <div class="modal-overlay" id="create-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Yeni Gönderi Paylaş</h3>
+        <button type="button" class="close-modal-btn" onclick="closeCreateModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="media-type-selector">
+          <label><input type="radio" name="media-type" value="image" checked id="radio-image"> <i class="fa-regular fa-image"></i> Fotoğraf</label>
+          <label><input type="radio" name="media-type" value="video" id="radio-video"> <i class="fa-solid fa-video"></i> Video</label>
+        </div>
+        <div class="upload-options">
+          <label class="file-drop-area" id="file-drop-zone" onclick="document.getElementById('media-file-input').click()">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span id="file-label-text">Bilgisayardan dosya seç</span>
+            <input type="file" id="media-file-input" accept="image/*,video/mp4,video/webm" style="display: none;" onchange="handleFileSelect(this)">
+          </label>
+          <div class="or-divider">VEYA URL GİRİN</div>
+          <input type="url" id="new-media-url" placeholder="https://...">
+        </div>
+        <div class="form-group" style="margin-top: 12px;">
+          <label>Açıklama:</label>
+          <textarea id="new-post-caption" rows="3" placeholder="Bir şeyler yaz..."></textarea>
+        </div>
+        <div class="upload-progress" id="upload-progress-box" style="display: none;">
+          <div class="spinner"></div>
+          <span id="upload-status-text">Buluta yükleniyor...</span>
+        </div>
+        <button type="button" class="primary-btn full-width" id="submit-new-post" onclick="submitNewPost()">Paylaş</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="toast-container"></div>
+  <script src="app.js"></script>
+</body>
+</html>

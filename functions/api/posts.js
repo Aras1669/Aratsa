@@ -1,3 +1,4 @@
+import { getUser } from '../_lib.js';
 // Cloudflare Pages Function: /api/posts (Cloudinary Kullanıcı Klasörlü + Günlük Sınır)
 export async function onRequestGet(context) {
   const { env } = context;
@@ -27,6 +28,10 @@ export async function onRequestGet(context) {
 export async function onRequestPost(context) {
   const { request, env } = context;
   try {
+    const authed = await getUser(request, env);
+    if (!authed) {
+      return new Response(JSON.stringify({ error: 'Gönderi paylaşmak için giriş yapmalısınız.' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    }
     const contentType = request.headers.get('content-type') || '';
     
     let userId = '';
@@ -58,6 +63,12 @@ export async function onRequestPost(context) {
       mediaUrl = formData.get('media_url') || '';
     }
 
+    // Kimlik istemciden değil, oturum token'ından alınır
+    userId = authed.id;
+    username = authed.username;
+    if (!/^https:\/\//i.test(mediaUrl) && !body.image_base64 && contentType.includes('application/json')) {
+      return new Response(JSON.stringify({ error: 'Geçerli bir https medya bağlantısı gerekli.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    }
     // Kullanıcı ID kontrolü
     if (!userId) {
       return new Response(JSON.stringify({ error: "Gönderi paylaşmak için yetkili bir kullanıcı ID'si gereklidir." }), {
@@ -148,6 +159,8 @@ export async function onRequestPost(context) {
       media_type: mediaType,
       caption: caption,
       likes_count: 0,
+      liked_by: [],
+      comments: [],
       created_at: createdAt
     };
 

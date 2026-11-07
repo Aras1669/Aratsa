@@ -38,6 +38,7 @@ function checkUserSession() {
     const saved = localStorage.getItem('aratsa_current_user');
     if (saved) {
       currentUser = JSON.parse(saved);
+      if (!currentUser?.token) currentUser = null; // token'sız eski oturumlar yeniden giriş yapar
     }
   } catch (e) {
     currentUser = null;
@@ -154,7 +155,12 @@ window.handleAuthSubmit = async function(e) {
 
   // 1. KAYIT OLMA ADIMI: Önce 6 Haneli E-posta Onay Kodu Simülasyonu
   if (currentAuthTab === 'register') {
-    const verificationCode = Math.floor(1000 + Math.random() * 9999).toString();
+    if (!/^[\p{L}0-9_.]{3,20}$/u.test(username)) {
+      errorElem.textContent = 'Kullanıcı adı 3-20 karakter olmalı (harf, rakam, _ veya .).';
+      errorElem.style.display = 'block';
+      return;
+    }
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     pendingRegistration = {
       email: email.toLowerCase(),
@@ -191,7 +197,7 @@ window.handleAuthSubmit = async function(e) {
       throw new Error(result.error || 'Giriş yapılamadı!');
     }
 
-    currentUser = result.user;
+    currentUser = { ...result.user, token: result.token };
     localStorage.setItem('aratsa_current_user', JSON.stringify(currentUser));
 
     closeAuthModal();
@@ -246,7 +252,7 @@ window.confirmVerificationCode = async function() {
       throw new Error(result.error || 'Kayıt işlemi başarısız oldu.');
     }
 
-    currentUser = result.user;
+    currentUser = { ...result.user, token: result.token };
     localStorage.setItem('aratsa_current_user', JSON.stringify(currentUser));
 
     pendingRegistration = null;
@@ -283,13 +289,6 @@ window.cancelVerification = function() {
   if (verifyError) verifyError.style.display = 'none';
 };
 
-window.handleSignOut = function() {
-  localStorage.removeItem('aratsa_current_user');
-  currentUser = null;
-  updateUIForUser();
-  renderPosts();
-  showToast('Oturum kapatıldı.');
-};
 
 /* =========================================================
    3. GÖNDERİ OLUŞTURMA & CLOUDINARY + CLOUDFLARE POSTS API
@@ -360,7 +359,10 @@ window.submitNewPost = async function() {
       finalMediaUrl = await uploadToCloudinary(selectedFile);
     } catch (err) {
       console.warn('Cloudinary yükleme hatası, yerel nesne URL ile devam ediliyor:', err);
-      finalMediaUrl = URL.createObjectURL(selectedFile);
+      alert('Dosya yüklenemedi. Cloudinary ayarlarını (cloud name / unsigned preset) kontrol edin veya bir URL girin.');
+      if (submitBtn) submitBtn.disabled = false;
+      if (progressBox) progressBox.style.display = 'none';
+      return;
     }
   }
 
@@ -386,7 +388,7 @@ window.submitNewPost = async function() {
     // 2. Adım: Cloudflare /api/posts endpoint'ine gönderiyi kalıcı olarak kaydet
     const response = await fetch('/api/posts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify(newPost)
     });
 
@@ -397,7 +399,7 @@ window.submitNewPost = async function() {
     }
 
     // Başarılı olursa listeye ekle ve ekranı yenile
-    posts.unshift(newPost);
+    posts.unshift(result.post || newPost);
     renderPosts();
     closeCreateModal();
     
@@ -448,9 +450,10 @@ async function loadPostsFromCloud() {
     posts = [];
   }
   renderPosts();
-  setTimeout(() => {
-    alert("Bu site henüz geliştirme aşamasındadır. Lütfen test amaçlı kullanın. Site yakın bir zamanda güncellenecektir. Güncellemeden sonra siteyi kullanabilirsiniz. Güncelleme sonrası verileriniz silinebilir. Lütfen önemli verilerinizi saklamayın. Teşekkürler.");
-  }, 50);
+  if (location.hash && !window.hashDone) {
+    window.hashDone = true;
+    document.querySelector(`[data-post-id="${CSS.escape(location.hash.slice(1))}"]`)?.scrollIntoView();
+  }
 }
 
 function renderPosts() {
@@ -460,14 +463,16 @@ function renderPosts() {
 
   container.querySelectorAll('.post-card').forEach(el => el.remove());
 
-  if (posts.length === 0) {
+  const visible = getVisiblePosts();
+  updateFilterBar();
+  if (visible.length === 0) {
     if (emptyState) emptyState.style.display = 'flex';
     return;
   }
 
   if (emptyState) emptyState.style.display = 'none';
 
-  posts.forEach(post => {
+  visible.forEach(post => {
     const postEl = createPostElement(post);
     container.appendChild(postEl);
   });
@@ -494,7 +499,7 @@ function createPostElement(post) {
         <div class="author-avatar-ring"><i class="fa-solid fa-user"></i></div>
         <div class="author-details">
           <span class="username">${escapeHtml(post.username || 'kullanici')}</span>
-          <span class="time">• Bulut</span>
+          <span class="time">• ${timeAgo(post.created_at)}</span>
         </div>
       </div>
       <button type="button" class="close-modal-btn" onclick="openPostOptions('${post.id}')"><i class="fa-solid fa-ellipsis"></i></button>
@@ -508,7 +513,7 @@ function createPostElement(post) {
           <i class="${isLiked ? 'fa-solid' : 'fa-regular'} fa-heart"></i>
         </button>
         <button type="button" class="action-btn comment-btn" onclick="focusComment('${post.id}')"><i class="fa-regular fa-comment"></i></button>
-        <button type="button" class="action-btn share-btn" onclick="sharePost()"><i class="fa-regular fa-paper-plane"></i></button>
+        <button type="button" class="action-btn share-btn" onclick="sharePost('${post.id}')"><i class="fa-regular fa-paper-plane"></i></button>
       </div>
       <button type="button" class="action-btn save-btn"><i class="fa-regular fa-bookmark"></i></button>
     </div>
@@ -529,6 +534,7 @@ function createPostElement(post) {
   `;
 
   setupCardInteractions(card, post, isVideo);
+  hydrateCard(card, post);
   return card;
 }
 
@@ -589,41 +595,14 @@ function togglePostLike(post, likeBtn, likesCountElem) {
   }
 
   likesCountElem.textContent = post.likes_count;
+  syncLike(post, likesCountElem);
 }
 
 window.focusComment = function(postId) {
   document.getElementById(`comment-input-${postId}`)?.focus();
 };
 
-window.sharePost = function() {
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(window.location.href);
-    showToast('Bağlantı kopyalandı!');
-  } else {
-    showToast('Bağlantı kopyalandı!');
-  }
-};
 
-window.submitComment = function(postId, form) {
-  if (!requireAuth('Yorum yapmak')) return;
-
-  const input = form.querySelector('.comment-input');
-  const text = input.value.trim();
-  if (!text) return;
-
-  const commentsList = document.getElementById(`comments-list-${postId}`);
-  if (commentsList) {
-    const item = document.createElement('div');
-    item.className = 'comment-item';
-    const username = currentUser.username || currentUser.email.split('@')[0];
-    item.innerHTML = `
-      <span class="username">${escapeHtml(username)}</span>
-      <span class="comment-text">${escapeHtml(text)}</span>
-    `;
-    commentsList.appendChild(item);
-    input.value = '';
-  }
-};
 
 /* =========================================================
    5. DİĞER YARDIMCI FONKSİYONLAR & MİSAFİR KİLİDİ
@@ -669,14 +648,7 @@ function requireAuth(actionName = 'Bu işlemi yapmak') {
   return true;
 }
 
-window.handleNavClick = function(section) {
-  if (section === 'home') window.scrollTo({ top: 0, behavior: 'smooth' });
-};
 
-window.handleProfileNavClick = function() {
-  if (!currentUser) openAuthModal('login');
-  else showToast(`Oturum: ${currentUser.username || currentUser.email}`);
-};
 
 window.showToast = function(msg) {
   const container = document.getElementById('toast-container');
@@ -688,24 +660,226 @@ window.showToast = function(msg) {
   setTimeout(() => toast.remove(), 2600);
 };
 
-window.openPostOptions = function(postId) {
-  currentActivePostId = postId;
-  document.getElementById('post-options-modal').style.display = 'flex';
-};
 
 window.closePostOptionsModal = function() {
   document.getElementById('post-options-modal').style.display = 'none';
   currentActivePostId = null;
 };
 
-window.copyCurrentPostLink = function() {
-  if (navigator.clipboard) navigator.clipboard.writeText(window.location.href);
-  showToast('Bağlantı kopyalandı!');
-  closePostOptionsModal();
-};
 
 function escapeHtml(text) {
   if (!text) return '';
   const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
   return String(text).replace(/[&<>"']/g, m => map[m]);
 }
+
+/* =========================================================
+   6. ETKİLEŞİMLER, FİLTRELER VE SUNUCU SENKRONU
+   ========================================================= */
+let feedFilter = 'home';
+let searchQuery = '';
+let reportPostId = null;
+
+function authHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (currentUser?.token) h.Authorization = 'Bearer ' + currentUser.token;
+  return h;
+}
+
+async function react(payload) {
+  const res = await fetch('/api/react', { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) { handleSignOut(true); openAuthModal('login'); }
+  if (!res.ok) throw new Error(data.error || 'İşlem başarısız.');
+  return data;
+}
+
+function timeAgo(iso) {
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (isNaN(s)) return 'Bulut';
+  if (s < 60) return 'şimdi';
+  if (s < 3600) return Math.floor(s / 60) + ' dk';
+  if (s < 86400) return Math.floor(s / 3600) + ' sa';
+  return Math.floor(s / 86400) + ' gün';
+}
+
+function getVisiblePosts() {
+  let list = posts.slice();
+  if (feedFilter === 'mine') list = list.filter(p => p.user_id === currentUser?.id);
+  if (feedFilter === 'reels') list = list.filter(p => p.media_type === 'video' || /\.(mp4|webm|mov)$/i.test(p.media_url || ''));
+  if (feedFilter === 'explore') list.sort((a, b) => (b.likes_count || 0) - (a.likes_count || 0));
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    list = list.filter(p => ((p.username || '') + ' ' + (p.caption || '')).toLowerCase().includes(q));
+  }
+  return list;
+}
+
+function updateFilterBar() {
+  const bar = document.getElementById('filter-bar');
+  if (!bar) return;
+  const names = { mine: 'Gönderilerim', reels: 'Reels', explore: 'Keşfet (en çok beğenilenler)' };
+  const label = searchQuery ? `Arama: “${searchQuery}”` : names[feedFilter];
+  bar.style.display = label ? 'flex' : 'none';
+  bar.innerHTML = label ? `<span>${escapeHtml(label)}</span><button type="button" class="auth-action-link" onclick="handleNavClick('home')">Temizle</button>` : '';
+}
+
+function openPanel(title, html, onReady) {
+  document.getElementById('panel-title').textContent = title;
+  document.getElementById('panel-body').innerHTML = html;
+  document.getElementById('panel-modal').style.display = 'flex';
+  onReady?.();
+}
+window.closePanel = () => { document.getElementById('panel-modal').style.display = 'none'; };
+
+window.handleNavClick = function(section, btn) {
+  if (section === 'search') {
+    return openPanel('Ara', `<input type="search" id="search-input" class="comment-input" style="width:100%" placeholder="Kullanıcı veya açıklama ara..." value="${escapeHtml(searchQuery)}">`, () => {
+      const input = document.getElementById('search-input');
+      input.focus();
+      input.addEventListener('input', () => { searchQuery = input.value.trim(); renderPosts(); });
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') closePanel(); });
+    });
+  }
+  if (section === 'notifications') return openNotifications();
+  searchQuery = '';
+  feedFilter = section;
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  (btn || (section === 'home' && document.querySelector('.nav-item')))?.classList.add('active');
+  renderPosts();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+window.handleProfileNavClick = function() {
+  if (!currentUser) return openAuthModal('login');
+  handleNavClick('mine', document.getElementById('nav-profile-btn'));
+};
+
+function openNotifications() {
+  if (!requireAuth('Bildirimleri görmek')) return;
+  const items = [];
+  posts.filter(p => p.user_id === currentUser.id).forEach(p => {
+    if (p.likes_count) items.push({ t: p.created_at, html: `<b>${p.likes_count}</b> kişi gönderini beğendi: “${escapeHtml((p.caption || 'Gönderi').slice(0, 30))}”` });
+    (p.comments || []).filter(c => c.user_id !== currentUser.id).forEach(c => items.push({ t: c.created_at, html: `<b>${escapeHtml(c.username)}</b> yorum yaptı: ${escapeHtml(c.text.slice(0, 60))}` }));
+  });
+  items.sort((a, b) => new Date(b.t) - new Date(a.t));
+  openPanel('Bildirimler', items.length ? items.map(i => `<p style="margin:0 0 12px">${i.html}</p>`).join('') : '<p>Henüz bildirimin yok.</p>');
+}
+
+window.handleSignOut = function(silent) {
+  localStorage.removeItem('aratsa_current_user');
+  currentUser = null;
+  feedFilter = 'home';
+  searchQuery = '';
+  updateUIForUser();
+  renderPosts();
+  if (silent !== true) showToast('Oturum kapatıldı.');
+};
+
+async function syncLike(post, countEl) {
+  try {
+    const r = await react({ action: 'like', id: post.id });
+    post.likes_count = r.likes_count;
+    post.liked_by = r.liked_by;
+    countEl.textContent = r.likes_count;
+  } catch (err) {
+    showToast(err.message);
+    loadPostsFromCloud();
+  }
+}
+
+function commentEl(c) {
+  const d = document.createElement('div');
+  d.className = 'comment-item';
+  d.innerHTML = `<span class="username">${escapeHtml(c.username)}</span> <span class="comment-text">${escapeHtml(c.text)}</span>`;
+  return d;
+}
+
+function hydrateCard(card, post) {
+  const list = card.querySelector('.post-comments');
+  (post.comments || []).forEach(c => list.appendChild(commentEl(c)));
+
+  const key = 'aratsa_saved_' + (currentUser?.id || 'guest');
+  const read = () => { try { return JSON.parse(localStorage.getItem(key)) || []; } catch { return []; } };
+  const btn = card.querySelector('.save-btn');
+  const icon = btn.querySelector('i');
+  if (currentUser && read().includes(post.id)) icon.classList.replace('fa-regular', 'fa-solid');
+  btn.addEventListener('click', () => { // ilk dinleyici ikonu çevirir, bu da kalıcı kaydeder
+    if (!currentUser) return;
+    const set = new Set(read());
+    icon.classList.contains('fa-solid') ? set.add(post.id) : set.delete(post.id);
+    try { localStorage.setItem(key, JSON.stringify([...set])); } catch {}
+  });
+}
+
+window.submitComment = async function(postId, form) {
+  if (!requireAuth('Yorum yapmak')) return;
+  const input = form.querySelector('.comment-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.disabled = true;
+  try {
+    const { comment } = await react({ action: 'comment', id: postId, text });
+    const post = posts.find(p => p.id === postId);
+    if (post) (post.comments ||= []).push(comment);
+    document.getElementById(`comments-list-${postId}`)?.appendChild(commentEl(comment));
+    input.value = '';
+  } catch (err) {
+    showToast(err.message);
+  }
+  input.disabled = false;
+};
+
+window.openPostOptions = function(postId) {
+  currentActivePostId = postId;
+  const post = posts.find(p => p.id === postId);
+  document.getElementById('opt-delete-btn').style.display = currentUser && post?.user_id === currentUser.id ? 'block' : 'none';
+  document.getElementById('post-options-modal').style.display = 'flex';
+};
+
+window.confirmDeleteCurrentPost = async function() {
+  const id = currentActivePostId;
+  if (!id || !confirm('Bu gönderiyi silmek istediğine emin misin?')) return;
+  try {
+    await react({ action: 'delete', id });
+    posts = posts.filter(p => p.id !== id);
+    closePostOptionsModal();
+    renderPosts();
+    showToast('Gönderi silindi.');
+  } catch (err) {
+    showToast(err.message);
+  }
+};
+
+window.openReportModalFromOptions = function() {
+  if (!requireAuth('Şikayet etmek')) return;
+  reportPostId = currentActivePostId;
+  closePostOptionsModal();
+  document.getElementById('report-modal').style.display = 'flex';
+};
+window.closeReportModal = () => { document.getElementById('report-modal').style.display = 'none'; };
+window.submitReport = async function(reason) {
+  try {
+    await react({ action: 'report', id: reportPostId, reason });
+    showToast('Şikayetin alındı, teşekkürler.');
+  } catch (err) {
+    showToast(err.message);
+  }
+  closeReportModal();
+};
+
+async function copyLink(id) {
+  const url = `${location.origin}${location.pathname}#${id}`;
+  try { await navigator.clipboard.writeText(url); showToast('Bağlantı kopyalandı!'); }
+  catch { prompt('Bağlantıyı kopyala:', url); }
+}
+window.sharePost = id => copyLink(id);
+window.copyCurrentPostLink = function() { const id = currentActivePostId; closePostOptionsModal(); copyLink(id); };
+
+// Modal dışına tıklama / Esc ile kapatma (misafir sınırı modalı hariç)
+document.addEventListener('click', e => {
+  if (e.target.classList?.contains('modal-overlay') && e.target.id !== 'guest-barrier-modal') e.target.style.display = 'none';
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay').forEach(m => { if (m.id !== 'guest-barrier-modal') m.style.display = 'none'; });
+});

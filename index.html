@@ -18,22 +18,22 @@
       </div>
 
       <nav class="nav-menu">
-        <button type="button" class="nav-item active" onclick="handleNavClick('home')">
+        <button type="button" class="nav-item active" onclick="handleNavClick('home', this)">
           <i class="fa-solid fa-house"></i> <span>Ana Sayfa</span>
         </button>
-        <button type="button" class="nav-item" onclick="showToast('Arama özelliği yakında eklenecek!')">
+        <button type="button" class="nav-item" onclick="handleNavClick('search', this)">
           <i class="fa-solid fa-magnifying-glass"></i> <span>Ara</span>
         </button>
-        <button type="button" class="nav-item" onclick="showToast('Keşfet akışı yakında!')">
+        <button type="button" class="nav-item" onclick="handleNavClick('explore', this)">
           <i class="fa-regular fa-compass"></i> <span>Keşfet</span>
         </button>
-        <button type="button" class="nav-item" onclick="showToast('Reels video akışı yakında!')">
+        <button type="button" class="nav-item" onclick="handleNavClick('reels', this)">
           <i class="fa-solid fa-clapperboard"></i> <span>Reels</span>
         </button>
         <button type="button" class="nav-item" onclick="showToast('Direkt mesajlar yakında!')">
           <i class="fa-regular fa-paper-plane"></i> <span>Mesajlar</span>
         </button>
-        <button type="button" class="nav-item" onclick="showToast('Bildirim kutusu yakında!')">
+        <button type="button" class="nav-item" onclick="handleNavClick('notifications', this)">
           <i class="fa-regular fa-heart"></i> <span>Bildirimler</span>
         </button>
         <button type="button" class="nav-item" id="nav-create-btn" onclick="handleCreatePostClick()">
@@ -53,7 +53,7 @@
         
         <!-- HİKAYELER (STORIES) -->
         <section class="stories-container" id="stories-bar">
-          <div class="story-item" onclick="showToast('Hikaye yükleme özelliği yakında!')">
+          <div class="story-item" onclick="handleCreatePostClick()">
             <div class="story-avatar-ring">
               <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150" alt="Sen">
             </div>
@@ -62,6 +62,7 @@
         </section>
 
         <!-- GÖNDERİLER AKIŞI -->
+        <div class="filter-bar" id="filter-bar" style="display: none;"></div>
         <section class="posts-stream" id="posts-stream">
           <div class="empty-state" id="empty-state">
             <i class="fa-solid fa-camera"></i>
@@ -142,7 +143,7 @@
             <p id="verify-email-desc">E-posta adresinize 6 haneli onay kodu gönderdik:</p>
           </div>
           <div class="form-group" style="text-align: center;">
-            <input type="text" id="verify-code-input" maxlength="4" placeholder="0000" class="verify-code-field">
+            <input type="text" id="verify-code-input" maxlength="6" placeholder="000000" class="verify-code-field">
           </div>
           <div class="auth-error-msg" id="verify-error"></div>
           <button type="button" class="primary-btn full-width" onclick="confirmVerificationCode()">Hesabı Onayla ve Giriş Yap</button>
@@ -201,6 +202,35 @@
       </div>
     </div>
   </div>
+
+  <!-- YASAL MODALI -->
+  <div class="modal-overlay" id="legal-modal"><div class="modal-box">
+    <div class="modal-header"><h3>Topluluk Kuralları ve Yasal Haklar</h3><button type="button" class="close-modal-btn" onclick="closeLegalModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="modal-body"><p>Aratsa’da saygılı ol; nefret içeren, taciz eden veya yasa dışı içerik paylaşma. Paylaştığın içeriklerden sen sorumlusun. Uygunsuz içerikleri “Şikayet Et” ile bildirebilirsin. Hesap açarak bu koşulları kabul etmiş olursun. Şifren tek yönlü şifrelenerek saklanır.</p></div>
+  </div></div>
+
+  <!-- MİSAFİR SINIRI MODALI -->
+  <div class="modal-overlay" id="guest-barrier-modal"><div class="modal-box auth-box">
+    <div class="modal-header"><h3>Devam etmek için giriş yap</h3></div>
+    <div class="modal-body"><p>Daha fazla gönderi görmek için Aratsa’ya giriş yap veya ücretsiz hesap oluştur.</p>
+      <button type="button" class="primary-btn full-width" onclick="closeBarrierAndOpen('login')">Giriş Yap</button>
+      <button type="button" class="option-btn" onclick="closeBarrierAndOpen('register')">Kayıt Ol</button></div>
+  </div></div>
+
+  <!-- ŞİKAYET MODALI -->
+  <div class="modal-overlay" id="report-modal"><div class="modal-box options-box"><div class="options-menu">
+    <div class="option-btn" style="font-weight: 600; cursor: default;">Neden şikayet ediyorsun?</div>
+    <button type="button" class="option-btn danger" onclick="submitReport('Spam')">Spam</button>
+    <button type="button" class="option-btn danger" onclick="submitReport('Uygunsuz içerik')">Uygunsuz içerik</button>
+    <button type="button" class="option-btn danger" onclick="submitReport('Nefret veya taciz')">Nefret veya taciz</button>
+    <button type="button" class="option-btn cancel" onclick="closeReportModal()">İptal</button>
+  </div></div></div>
+
+  <!-- ARAMA / BİLDİRİM PANELİ -->
+  <div class="modal-overlay" id="panel-modal"><div class="modal-box">
+    <div class="modal-header"><h3 id="panel-title"></h3><button type="button" class="close-modal-btn" onclick="closePanel()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="modal-body" id="panel-body"></div>
+  </div></div>
 
   <div id="toast-container" class="toast-container"></div>
   <script src="app.js"></script>
