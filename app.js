@@ -366,17 +366,22 @@ window.submitNewPost = async function() {
     }
   }
 
+  // Mail veya ismi güvenli bir şekilde alıp split hatasını önleyelim
+  const userEmail = currentUser.mail || currentUser.email || 'kullanici@aratsa.com';
+  const userName = currentUser.isim || currentUser.username || userEmail.split('@')[0];
+
   const newPost = {
     id: 'post_' + Date.now(),
     created_at: new Date().toISOString(),
     user_id: currentUser.id,
-    username: currentUser.username || currentUser.email.split('@')[0],
+    username: userName,
     media_url: finalMediaUrl,
     media_type: mediaType,
     caption: caption,
     likes_count: 0,
     liked_by: []
   };
+
 
   try {
     if (statusText) statusText.textContent = "Cloudflare veritabanına kaydediliyor...";
