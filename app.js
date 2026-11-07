@@ -366,7 +366,7 @@ window.submitNewPost = async function() {
     }
   }
 
-  // Mail veya ismi güvenli bir şekilde alıp split hatasını önleyelim
+  // GÜVENLİK KONTROLÜ: currentUser nesnesindeki isim/mail alanlarını hatasız oku (.split hatasını önler)
   const userEmail = currentUser.mail || currentUser.email || 'kullanici@aratsa.com';
   const userName = currentUser.isim || currentUser.username || userEmail.split('@')[0];
 
@@ -382,27 +382,31 @@ window.submitNewPost = async function() {
     liked_by: []
   };
 
-
   try {
     if (statusText) statusText.textContent = "Cloudflare veritabanına kaydediliyor...";
     
-    // 2. Adım: Cloudflare /api/posts endpoint'ine gönderiyi kaydet
+    // 2. Adım: Cloudflare /api/posts endpoint'ine gönderiyi kalıcı olarak kaydet
     const response = await fetch('/api/posts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newPost)
     });
 
+    const result = await response.json();
+
     if (!response.ok) {
-      throw new Error('Gönderi buluta kaydedilemedi.');
+      throw new Error(result.error || 'Gönderi buluta kaydedilemedi.');
     }
 
+    // Başarılı olursa listeye ekle ve ekranı yenile
     posts.unshift(newPost);
     renderPosts();
     closeCreateModal();
+    
     document.getElementById('new-media-url').value = '';
     document.getElementById('new-post-caption').value = '';
     showToast('Gönderiniz buluta başarıyla paylaşıldı!');
+
   } catch (err) {
     alert('Hata: ' + err.message);
   } finally {
@@ -410,6 +414,7 @@ window.submitNewPost = async function() {
     if (progressBox) progressBox.style.display = 'none';
   }
 };
+
 
 async function uploadToCloudinary(file) {
   const formData = new FormData();
