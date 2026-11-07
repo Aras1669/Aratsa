@@ -87,8 +87,6 @@ function updateUIForUser() {
         </div>
         <div class="account-btn-group">
           <button type="button" class="auth-action-link" onclick="openAuthModal('login')">Giriş Yap</button>
-          <span class="divider">•</span>
-          <button type="button" class="auth-action-link highlight" onclick="openAuthModal('register')">Kayıt Ol</button>
         </div>
       `;
     }
