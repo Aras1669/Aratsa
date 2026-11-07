@@ -83,7 +83,7 @@ function updateUIForUser() {
         <div class="account-avatar"><i class="fa-solid fa-user"></i></div>
         <div class="account-meta">
           <span class="user-status">Misafir Kullanıcı</span>
-          <span class="user-sub">Gönderi paylaşmak için oturum açın</span>
+          <span class="user-sub" style="font-size: 10px;">Gönderi paylaşmak için oturum açın</span>
         </div>
         <div class="account-btn-group">
           <button type="button" class="auth-action-link" onclick="openAuthModal('login')">Giriş Yap</button>
