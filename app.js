@@ -59,7 +59,7 @@ function updateUIForUser() {
     if (sidebarSection) {
       sidebarSection.innerHTML = `
         <div class="logged-in-badge">
-          <span class="logged-in-email"><i class="fa-solid fa-circle-user"></i>${"   "+"   "+"  "+username}</span>
+          <span class="logged-in-email"><i class="fa-solid fa-circle-user"></i>${username}</span>
         </div>
       `;
     }
