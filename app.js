@@ -13,7 +13,7 @@ const CONFIG = {
 };
 
 // Uygulama Durumu
-let currentUser = null;
+let currentUser = null || JSON.parse(localStorage.getItem("aratsa_current_user")).isim;
 let currentAuthTab = 'login';
 let selectedFile = null;
 let posts = [];
