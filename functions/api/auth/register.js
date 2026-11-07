@@ -1,9 +1,9 @@
 /**
  * Aratsa Projesi - Register (Kayıt Ol) Fonksiyonu
- * Şifreler Base64 formatında kodlanarak Cloudflare Workers KV'ye kaydedilir.
+ * Hem JSON hem FormData destekleyen, Türkçe/İngilizce anahtar uyumlu güvenli kayıt servisi.
  */
 
-// Güvenli ve Türkçe karakter destekli Base64 kodlama fonksiyonu
+// Güvenli Base64 kodlama fonksiyonu
 function encodeBase64(str) {
   const bytes = new TextEncoder().encode(str);
   let binary = '';
@@ -17,7 +17,7 @@ export async function onRequestPost(context) {
   try {
     const { request, env } = context;
 
-    // 1. Cloudflare Workers KV kontrolü
+    // 1. KV Kontrolü
     if (!env.USERS_KV) {
       return new Response(JSON.stringify({ error: "Sistem Hatası: USERS_KV Namespace tanımlanmamış." }), {
         status: 500,
@@ -25,19 +25,52 @@ export async function onRequestPost(context) {
       });
     }
 
-    // 2. Gelen JSON verisini al
-    const body = await request.json();
-    const { isim, mail, şifre } = body;
+    // 2. Gelen verinin türünü (Content-Type) tespit et ve güvenli şekilde parse et
+    let body = {};
+    const contentType = request.headers.get("content-type") || "";
 
-    // 3. Eksik alan kontrolü
+    if (contentType.includes("application/json")) {
+      try {
+        body = await request.json();
+      } catch (e) {
+        body = {};
+      }
+    } else if (contentType.includes("form") || contentType.includes("multipart")) {
+      const formData = await request.formData();
+      body = Object.fromEntries(formData);
+    } else {
+      // Varsayılan olarak JSON denemesi yapalım
+      try {
+        body = await request.json();
+      } catch (e) {
+        body = {};
+      }
+    }
+
+    // 3. Farklı anahtar kombinasyonlarını esnek bir şekilde yakala (Türkçe veya İngilizce gelebilir)
+    const isim = body.isim || body.name || body.username || body.kullaniciAdi;
+    const mail = body.mail || body.email;
+    const şifre = body.şifre || body.sifre || body.password;
+
+    // 4. Eksik bilgi kontrolü (Hangi alanın eksik olduğunu detaylı görmek için loglanabilir)
     if (!isim || !mail || !şifre) {
-      return new Response(JSON.stringify({ error: "Eksik bilgi: İsim, mail ve şifre alanları zorunludur." }), {
+      return new Response(JSON.stringify({ 
+        error: "Eksik bilgi: İsim, mail ve şifre alanları zorunludur.",
+        debug: { 
+          gelenVeri: body,
+          eksikAlanlar: {
+            isim: !isim,
+            mail: !mail,
+            şifre: !şifre
+          }
+        }
+      }), {
         status: 400,
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    // 4. E-posta formatı kontrolü
+    // 5. E-posta format kontrolü
     if (!mail.includes("@") || !mail.includes(".")) {
       return new Response(JSON.stringify({ error: "Geçersiz e-posta formatı." }), {
         status: 400,
@@ -45,7 +78,7 @@ export async function onRequestPost(context) {
       });
     }
 
-    // 5. Daha önce bu mail ile kayıt olunmuş mu kontrol et
+    // 6. Daha önce kayıt olunmuş mu?
     const existingUser = await env.USERS_KV.get(mail);
     if (existingUser) {
       return new Response(JSON.stringify({ error: "Bu e-posta adresi ile zaten bir hesap mevcut." }), {
@@ -54,13 +87,10 @@ export async function onRequestPost(context) {
       });
     }
 
-    // 6. Benzersiz ID oluştur
+    // 7. Benzersiz ID ve Base64 Şifreleme
     const id = "usr_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
-
-    // 7. Şifreyi Base64 ile kodla
     const encodedPassword = encodeBase64(şifre);
 
-    // 8. KV içine kaydedilecek kullanıcı objesi (id, isim, mail, şifre formatında)
     const userData = {
       id: id,
       isim: isim,
@@ -68,18 +98,13 @@ export async function onRequestPost(context) {
       şifre: encodedPassword
     };
 
-    // 9. Cloudflare Workers KV içerisine kaydet (Key: mail, Value: JSON string)
+    // 8. KV Veritabanına Yazma
     await env.USERS_KV.put(mail, JSON.stringify(userData));
 
-    // 10. Başarılı yanıt döndür (Güvenlik için şifre dışarıya verilmez)
     return new Response(JSON.stringify({
       success: true,
       message: "Kayıt başarıyla oluşturuldu.",
-      user: {
-        id: id,
-        isim: isim,
-        mail: mail
-      }
+      user: { id, isim, mail }
     }), {
       status: 201,
       headers: { "Content-Type": "application/json" }
