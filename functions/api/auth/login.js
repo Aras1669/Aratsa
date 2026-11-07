@@ -1,4 +1,4 @@
-/ Cloudflare Pages Function: /api/auth/login
+// Cloudflare Pages Function: /api/auth/login
 export async function onRequestPost(context) {
   const { request, env } = context;
   try {
