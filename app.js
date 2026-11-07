@@ -13,7 +13,7 @@ const CONFIG = {
 };
 
 // Uygulama Durumu
-let currentUser = null || JSON.parse(localStorage.getItem("aratsa_current_user")).isim;
+let currentUser = null;
 let currentAuthTab = 'login';
 let selectedFile = null;
 let posts = [];
@@ -51,8 +51,8 @@ function updateUIForUser() {
   const sidebarAccountBox = document.getElementById('sidebar-account-box');
 
   if (currentUser) {
-    const email = currentUser.email || 'kullanici@aratsa.com';
-    const username = currentUser.username || email.split('@')[0];
+    const email = currentUser.email || JSON.parse(localStorage.getItem("aratsa_current_user")).mail;
+    const username = currentUser.username || JSON.parse(localStorage.getItem("aratsa_current_user")).isim;
 
     if (profileText) profileText.textContent = username;
 
