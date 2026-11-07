@@ -6,7 +6,7 @@
 const CONFIG = {
   // Cloudinary: Medya Depolama
   CLOUDINARY_CLOUD_NAME: 'yrvpqiet', 
-  CLOUDINARY_UPLOAD_PRESET: 'r3t5vuoi',
+  CLOUDINARY_UPLOAD_PRESET: 'İmages', // <-- Buraya Cloudinary'deki güncel unsigned preset adını yazmalısın
   
   // Giriş yapmadan görülebilecek maksimum gönderi sınırı
   GUEST_POST_LIMIT: 2
