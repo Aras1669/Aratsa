@@ -42,7 +42,7 @@ body { background-color: #fafafa; color: #262626; }
 .auth-segmented-switch { display: flex; background: #f0f2f5; border-radius: 10px; padding: 4px; gap: 4px; margin-bottom: 20px; }
 .segmented-btn { flex: 1; padding: 10px; border: none; border-radius: 8px; font-weight: 600; background: transparent; cursor: pointer; color: #65676b; }
 .segmented-btn.active { background: #fff; color: #0095f6; }
-.form-group { margin-bottom: 14px; display: flex; flexDirection: column; gap: 6px; }
+.form-group { margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
 .form-group input, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #dbdbdb; border-radius: 6px; outline: none; }
 .primary-btn { background-color: #0095f6; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; width: 100%; }
 .toast-container { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
