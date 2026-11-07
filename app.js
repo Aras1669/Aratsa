@@ -94,6 +94,7 @@ function updateUIForUser() {
       `;
     }
   }
+  alert("Bu site henüz geliştirme aşamasındadır. Lütfen test amaçlı kullanın. Site yakın bir zamanda güncellenecektir. Güncellemeden sonra siteyi kullanabilirsiniz. Güncelleme sonrası verileriniz silinebilir. Lütfen önemli verilerinizi saklamayın. Teşekkürler.");
 }
 
 // Modal Yönetimi
