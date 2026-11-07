@@ -1,4 +1,4 @@
-// Cloudflare Pages Function: /api/posts (Cloudinary + Günlük 100 Gönderi Sınırı)
+// Cloudflare Pages Function: /api/posts (Cloudinary Kullanıcı Klasörlü + Günlük Sınır)
 export async function onRequestGet(context) {
   const { env } = context;
   try {
@@ -67,7 +67,7 @@ export async function onRequestPost(context) {
     }
 
     // -----------------------------------------------------------------
-    // 2. GÜNLÜK 100 GÖNDERİ SINIRI KONTROLÜ
+    // 2. GÜNLÜK GÖNDERİ SINIRI KONTROLÜ
     // -----------------------------------------------------------------
     const todayStr = new Date().toISOString().split('T')[0]; // "YYYY-MM-DD" formatı
     let existingPosts = [];
@@ -97,11 +97,13 @@ export async function onRequestPost(context) {
     }
     // -----------------------------------------------------------------
 
-    // 3. Cloudinary Yükleme İşlemi (Eğer istek içinde dosya/base64 varsa)
+    // 3. Cloudinary Yükleme İşlemi (Kullanıcıya Özel Klasör Destekli)
     if (contentType.includes('application/json') && body.image_base64 && env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_UPLOAD_PRESET) {
       const cldFormData = new FormData();
       cldFormData.append('file', body.image_base64);
       cldFormData.append('upload_preset', env.CLOUDINARY_UPLOAD_PRESET);
+      // Kullanıcı bazlı klasör yönlendirmesi
+      cldFormData.append('folder', `aratsa_users/${userId}`);
 
       const cldRes = await fetch(
         `https://api.cloudinary.com/v1_1/${env.CLOUDINARY_CLOUD_NAME}/image/upload`,
@@ -121,6 +123,8 @@ export async function onRequestPost(context) {
         const cldFormData = new FormData();
         cldFormData.append('file', imageFile);
         cldFormData.append('upload_preset', env.CLOUDINARY_UPLOAD_PRESET);
+        // Kullanıcı bazlı klasör yönlendirmesi
+        cldFormData.append('folder', `aratsa_users/${userId}`);
 
         const cldRes = await fetch(
           `https://api.cloudinary.com/v1_1/${env.CLOUDINARY_CLOUD_NAME}/image/upload`,
