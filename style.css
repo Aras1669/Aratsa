@@ -33,7 +33,7 @@ body { background-color: #fafafa; color: #262626; }
 .comment-input { flex: 1; border: none; outline: none; font-size: 13px; background: transparent; }
 .comment-submit { border: none; background: none; color: #0095f6; font-weight: 600; cursor: pointer; font-size: 13px; }
 .suggestions-sidebar { min-width: 300px; }
-.account-card { display: flex; align-items: center; gap: 10px; padding: 12px; background: #fff; border: 1px solid #dbdbdb; border-radius: 40px; margin-bottom: 24px; }
+.account-card { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; background: #fff; border: 1px solid #dbdbdb; border-radius: 40px; margin-bottom: 24px; }
 .account-avatar { padding-left: 22px; padding-right: 20px; margin: 1px; width: 50px; height: 50px; border-radius: 25px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; }
 .logout-btn { background: #dddddd; border: none; outline: none; justify-content: center; align-items: center; padding-left: 10px; padding-right: 10px; border-radius: 25px; margin-left: -5px; width: 50px; height: 50px; }
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.65); justify-content: center; align-items: center; z-index: 1000; }
@@ -93,7 +93,6 @@ body { -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
 .options-menu { display: flex; flex-direction: column; }
 .auth-action-link { background: #efefef; color: #0095f6; font-weight: 600; }
 .auth-action-link.highlight { background: #0095f6; color: #fff; }
-.account-card { flex-wrap: wrap; border-radius: 16px; }
 .account-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .user-status { font-weight: 600; font-size: 14px; }
 .user-sub { font-size: 12px; color: #8e8e8e; }
