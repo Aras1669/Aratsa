@@ -50,14 +50,12 @@ function updateUIForUser() {
   const profileText = document.getElementById('nav-profile-text');
   const sidebarSection = document.getElementById('sidebar-user-section');
   const sidebarAccountBox = document.getElementById('sidebar-account-box');
-  const mobProfileBtn = document.getElementById('mob-profile-btn');
 
   if (currentUser) {
     const email = currentUser.email || JSON.parse(localStorage.getItem("aratsa_current_user")).mail;
     const username = currentUser.username || JSON.parse(localStorage.getItem("aratsa_current_user")).isim;
 
     if (profileText) profileText.textContent = username;
-    if (mobProfileBtn) mobProfileBtn.innerHTML = '<i class="fa-solid fa-user-check" style="color: #0095f6;"></i>';
 
     if (sidebarSection) {
       sidebarSection.innerHTML = `
@@ -79,7 +77,6 @@ function updateUIForUser() {
     }
   } else {
     if (profileText) profileText.textContent = 'Giriş Yap';
-    if (mobProfileBtn) mobProfileBtn.innerHTML = '<i class="fa-regular fa-user"></i>';
     if (sidebarSection) sidebarSection.innerHTML = '';
 
     if (sidebarAccountBox) {
@@ -188,11 +185,10 @@ window.handleAuthSubmit = async function(e) {
   submitBtn.textContent = 'Bulut sunucuya bağlanıyor...';
 
   try {
-    const b64Password = btoa(unescape(encodeURIComponent(password)));
     const response = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password: b64Password, password_b64: b64Password })
+      body: JSON.stringify({ email, pw64: toB64(password) })
     });
 
     const result = await response.json();
@@ -239,15 +235,13 @@ window.confirmVerificationCode = async function() {
   }
 
   try {
-    const b64Password = btoa(unescape(encodeURIComponent(pendingRegistration.password)));
     // Cloudflare Workers KV / D1 kayıt isteği
     const response = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: pendingRegistration.email,
-        password: b64Password,
-        password_b64: b64Password,
+        pw64: toB64(pendingRegistration.password),
         username: pendingRegistration.username
       })
     });
@@ -405,7 +399,7 @@ window.submitNewPost = async function() {
     }
 
     // Başarılı olursa listeye ekle ve ekranı yenile
-    posts.unshift(result.post || newPost);
+    posts.unshift(result.post ? normalizePost(result.post) : newPost);
     renderPosts();
     closeCreateModal();
     
@@ -423,6 +417,7 @@ window.submitNewPost = async function() {
 
 
 async function uploadToCloudinary(file) {
+  file = await shrinkImage(file);
   const formData = new FormData();
   formData.append('file', file);
   formData.append('upload_preset', CONFIG.CLOUDINARY_UPLOAD_PRESET);
@@ -445,10 +440,10 @@ async function uploadToCloudinary(file) {
 
 async function loadPostsFromCloud() {
   try {
-    const response = await fetch('/api/posts');
+    const response = await fetch('/api/posts', { headers: authHeaders() });
     if (response.ok) {
       const data = await response.json();
-      posts = Array.isArray(data) ? data : [];
+      posts = Array.isArray(data) ? data.map(normalizePost) : [];
     } else {
       posts = [];
     }
@@ -721,6 +716,7 @@ function getVisiblePosts() {
     const q = searchQuery.toLowerCase();
     list = list.filter(p => ((p.username || '') + ' ' + (p.caption || '')).toLowerCase().includes(q));
   }
+  if (!currentUser && feedFilter !== 'reels') list = list.slice(0, CONFIG.GUEST_POST_LIMIT);
   return list;
 }
 
@@ -743,10 +739,10 @@ window.closePanel = () => { document.getElementById('panel-modal').style.display
 
 window.handleNavClick = function(section, btn) {
   if (section === 'search') {
-    return openPanel('Ara', `<input type="search" id="search-input" class="comment-input" style="width:100%" placeholder="Kullanıcı veya açıklama ara..." value="${escapeHtml(searchQuery)}">`, () => {
+    return openPanel('Ara', `<input type="search" id="search-input" class="comment-input" style="width:100%" placeholder="Kullanıcı veya açıklama ara..." value="${escapeHtml(searchQuery)}"><div id="people-results"></div>`, () => {
       const input = document.getElementById('search-input');
       input.focus();
-      input.addEventListener('input', () => { searchQuery = input.value.trim(); document.body.classList.add('searching'); renderPosts(); });
+      input.addEventListener('input', () => { searchQuery = input.value.trim(); document.body.classList.add('searching'); renderPosts(); showPeople(input.value); });
       input.addEventListener('keydown', e => { if (e.key === 'Enter') closePanel(); });
     });
   }
@@ -754,16 +750,7 @@ window.handleNavClick = function(section, btn) {
   searchQuery = '';
   feedFilter = section;
   document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.mob-nav-btn').forEach(b => b.classList.remove('active'));
-
   (btn || (section === 'home' && document.querySelector('.nav-item')))?.classList.add('active');
-
-  // Mobil alt menü butonunu da aktif yap
-  if (section === 'home') document.querySelector('.mob-nav-btn[title="Ana Sayfa"]')?.classList.add('active');
-  if (section === 'search') document.querySelector('.mob-nav-btn[title="Ara"]')?.classList.add('active');
-  if (section === 'reels') document.querySelector('.mob-nav-btn[title="Reels"]')?.classList.add('active');
-  if (section === 'mine') document.getElementById('mob-profile-btn')?.classList.add('active');
-
   renderPosts();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 };
@@ -785,6 +772,7 @@ function openNotifications() {
 }
 
 window.handleSignOut = function(silent) {
+  if (currentUser?.token) fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
   localStorage.removeItem('aratsa_current_user');
   currentUser = null;
   feedFilter = 'home';
@@ -798,7 +786,7 @@ async function syncLike(post, countEl) {
   try {
     const r = await react({ action: 'like', id: post.id });
     post.likes_count = r.likes_count;
-    post.liked_by = r.liked_by;
+    post.liked_by = r.liked && currentUser ? [currentUser.id] : [];
     countEl.textContent = r.likes_count;
   } catch (err) {
     showToast(err.message);
@@ -904,7 +892,7 @@ function setCommentCount(card, post) {
 async function addComment(postId, text) {
   const { comment } = await react({ action: 'comment', id: postId, text });
   const post = posts.find(p => p.id === postId);
-  if (post) (post.comments ||= []).push(comment);
+  if (post) (post.comments ||= []).push(normalizeComment(comment));
   document.querySelectorAll(`[data-post-id="${postId}"]`).forEach(card => setCommentCount(card, post));
 }
 
@@ -1006,22 +994,12 @@ const videoIO = new IntersectionObserver(entries => entries.forEach(e => {
   if (e.isIntersecting && e.intersectionRatio > 0.6) e.target.play().catch(() => {}); else e.target.pause();
 }), { threshold: [0, 0.6] });
 
-function addReelsGate() {
-  document.querySelectorAll('.guest-gate').forEach(e => e.remove());
-  if (feedFilter !== 'reels' || currentUser) return;
-  const rest = posts.filter(isReel).length - GUEST_REELS_LIMIT;
-  if (rest <= 0) return;
-  const g = document.createElement('div');
-  g.className = 'guest-gate';
-  g.innerHTML = `<i class="fa-solid fa-lock"></i><h3>${rest} reels daha seni bekliyor</h3><p>Hepsini izlemek için giriş yap veya kayıt ol.</p><button type="button" class="primary-btn" onclick="openAuthModal('register')">Kayıt Ol</button>`;
-  document.getElementById('posts-stream').appendChild(g);
-}
 
 const _renderPosts = renderPosts;
 renderPosts = function() {
   _renderPosts();
   document.querySelectorAll('.post-media-container video').forEach(v => { v.muted = true; v.loop = true; videoIO.observe(v); });
-  addReelsGate();
+  addGuestGate();
   refreshFollow();
 };
 
@@ -1030,143 +1008,126 @@ updateUIForUser = function() {
   _updateUI();
   decorateAccountBox();
   loadFollow();
-  fetchUsersCache();
+  const uid = currentUser?.id || '';
+  if (lastUid !== null && uid !== lastUid) loadPostsFromCloud();
+  lastUid = uid;
+  loadUsers();
 };
 
-// =========================================================
-// İSTEMCİ İŞLEMCİSİYLE ÇALIŞAN FUZZY (LEVENSHTEIN) KULLANICI ARAMA
-// Sunucuyu yormadan cihazın CPU'sunda en yakın isimleri hesaplar
-// =========================================================
-let cachedUsers = [];
+// ---- Cihazda çalışan yardımcılar (sunucuyu yormaz) ----
+let lastUid = null;
+let allUsers = [];
+let dmPeer = null, dmTimer = null;
 
-async function fetchUsersCache() {
+function toB64(s) { return btoa(String.fromCharCode(...new TextEncoder().encode(s))); }
+function normalizeComment(c) { return { ...c, user_id: c.mine ? currentUser?.id : 'u:' + c.username }; }
+function normalizePost(p) {
+  return { ...p, user_id: p.mine ? currentUser?.id : 'u:' + p.username, liked_by: p.liked && currentUser ? [currentUser.id] : [], comments: (p.comments || []).map(normalizeComment) };
+}
+
+// Fotoğraflar yüklenmeden önce telefonda küçültülür (hız + depolama tasarrufu)
+async function shrinkImage(file) {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
   try {
-    const r = await fetch('/api/users');
+    const bmp = await createImageBitmap(file);
+    const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * s);
+    c.height = Math.round(bmp.height * s);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.85));
+    return blob && blob.size < file.size ? new File([blob], 'photo.jpg', { type: 'image/jpeg' }) : file;
+  } catch { return file; }
+}
+
+function addGuestGate() {
+  document.querySelectorAll('.guest-gate').forEach(e => e.remove());
+  if (currentUser || !posts.length) return;
+  const g = document.createElement('div');
+  g.className = 'guest-gate';
+  g.innerHTML = '<i class="fa-solid fa-lock"></i><h3>Daha fazlası seni bekliyor</h3><p>Tüm gönderi ve reels’leri görmek için giriş yap veya kayıt ol.</p><button type="button" class="primary-btn" onclick="openAuthModal(\'register\')">Kayıt Ol</button>';
+  document.getElementById('posts-stream').appendChild(g);
+}
+
+// ---- Kullanıcı arama: liste bir kez indirilir, en yakın eşleşmeler cihazda hesaplanır ----
+async function loadUsers() {
+  allUsers = [];
+  if (!currentUser) return;
+  try {
+    const c = JSON.parse(sessionStorage.getItem('aratsa_users') || 'null');
+    if (c && c.uid === currentUser.id && Date.now() - c.t < 300000) { allUsers = c.u; return; }
+    const r = await fetch('/api/users', { headers: authHeaders() });
     if (r.ok) {
-      const d = await r.json();
-      if (Array.isArray(d.users)) {
-        cachedUsers = d.users;
-      }
+      allUsers = (await r.json()).users || [];
+      sessionStorage.setItem('aratsa_users', JSON.stringify({ uid: currentUser.id, t: Date.now(), u: allUsers }));
     }
   } catch {}
 }
 
-function levenshtein(s1, s2) {
-  s1 = String(s1 || '').toLowerCase();
-  s2 = String(s2 || '').toLowerCase();
-  const costs = [];
-  for (let i = 0; i <= s1.length; i++) {
-    let lastValue = i;
-    for (let j = 0; j <= s2.length; j++) {
-      if (i === 0) {
-        costs[j] = j;
-      } else if (j > 0) {
-        let newValue = costs[j - 1];
-        if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
-          newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
-        }
-        costs[j - 1] = lastValue;
-        lastValue = newValue;
-      }
-    }
-    if (i > 0) costs[s2.length] = lastValue;
-  }
-  return costs[s2.length];
-}
-
-function findClosestUsers(query, max = 4) {
-  query = String(query || '').toLowerCase().trim().replace(/^@/, '');
-  if (!query || !cachedUsers.length) return [];
-  const myName = (currentUser?.username || '').toLowerCase();
-  const candidates = cachedUsers.filter(u => u.toLowerCase() !== myName);
-
-  // 1. Tam eşleşme
-  const exact = candidates.filter(u => u.toLowerCase() === query);
-  if (exact.length) return exact;
-
-  // 2. İçerenler
-  const subs = candidates.filter(u => u.toLowerCase().includes(query));
-
-  // 3. Levenshtein mesafesi ile en yakınları hesapla
-  const scored = candidates.map(u => {
-    const dist = levenshtein(query, u);
-    const maxLen = Math.max(query.length, u.length);
-    const sim = (maxLen - dist) / maxLen;
-    return { username: u, dist, sim };
-  });
-
-  scored.sort((a, b) => b.sim - a.sim || a.dist - b.dist);
-
-  const result = [];
-  for (const u of subs) {
-    if (!result.includes(u)) result.push(u);
-  }
-  for (const s of scored) {
-    if (s.dist <= 3 || s.sim >= 0.35) {
-      if (!result.includes(s.username)) result.push(s.username);
+function lev(a, b) {
+  const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = d[0];
+    d[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = d[j];
+      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
     }
   }
-  return result.slice(0, max);
+  return d[b.length];
 }
 
-// Kullanıcı yazarken anlık olarak yakın isimleri öner
-window.handleDmUserTyping = function(val) {
-  const box = document.getElementById('dm-suggestions-box');
+function suggest(q, n = 5) {
+  q = String(q || '').toLowerCase().replace(/^@/, '').trim();
+  if (!q) return [];
+  const limit = 2 + Math.max(2, Math.ceil(q.length * 0.6));
+  return allUsers.filter(u => u !== me())
+    .map(u => [u, u.startsWith(q) ? 0 : u.includes(q) ? 1 : 2 + lev(q, u)])
+    .filter(([, s]) => s <= limit)
+    .sort((a, b) => a[1] - b[1] || a[0].length - b[0].length)
+    .slice(0, n)
+    .map(([u]) => u);
+}
+
+function showPeople(q) {
+  const box = document.getElementById('people-results');
   if (!box) return;
-  const q = String(val || '').trim().replace(/^@/, '').toLowerCase();
-  if (!q || q.length < 2) {
-    box.style.display = 'none';
-    box.innerHTML = '';
-    return;
-  }
-  const matches = findClosestUsers(q, 4);
-  if (matches.length > 0) {
-    box.style.display = 'block';
-    box.innerHTML = `
-      <div class="suggestion-title"><i class="fa-solid fa-magnifying-glass"></i> Bunu mu demek istediniz?</div>
-      <div>${matches.map(u => `<span class="suggestion-chip" onclick="selectDmUser('${escapeHtml(u)}')"><i class="fa-solid fa-user"></i> @${escapeHtml(u)}</span>`).join('')}</div>
-    `;
-  } else {
-    box.style.display = 'none';
-  }
-};
+  box.innerHTML = suggest(q, 5).map(u => `<div class="person"><i class="fa-solid fa-circle-user"></i><span>@${escapeHtml(u)}</span><button type="button" class="follow-btn" data-user="${escapeHtml(u)}" onclick="toggleFollow(this.dataset.user)"></button><button type="button" class="mini-btn" data-user="${escapeHtml(u)}" onclick="closePanel(); openDM(this.dataset.user)">Mesaj</button></div>`).join('');
+  refreshFollow();
+}
 
-window.selectDmUser = function(username) {
-  const input = document.getElementById('dm-user-input');
-  if (input) input.value = username;
-  const box = document.getElementById('dm-suggestions-box');
-  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
-  dmOpen(username);
-};
+// ---- Mesajlar (metin). Yetki kontrolü ve kayıt sunucuda yapılır ----
+const userBtn = u => `<button type="button" class="dm-convo" data-user="${escapeHtml(u)}" onclick="dmOpen(this.dataset.user)"><i class="fa-solid fa-circle-user"></i> @${escapeHtml(u)}</button>`;
 
-// =========================================================
-// ŞİFRELENMEMİŞ, GÜVENLİ VE AÇIK METİN MESAJLAŞMA (KV FORMATLI)
-// Mesajlar "kullanıcı1-kullanıcı2" ID'siyle KV'de tutulur ve sunucu okuyabilir
-// =========================================================
-let dmPeer = null, dmTimer = null;
+window.dmSuggest = function() {
+  document.getElementById('dm-suggest').innerHTML = suggest(document.getElementById('dm-user-input').value, 4).map(userBtn).join('');
+};
 
 async function dmLoad() {
-  if (!dmPeer || document.getElementById('dm-modal').style.display === 'none') {
-    return clearInterval(dmTimer);
-  }
+  if (!dmPeer || document.getElementById('dm-modal').style.display === 'none') return clearInterval(dmTimer);
+  if (document.hidden) return;
   try {
     const r = await fetch('/api/messages?with=' + encodeURIComponent(dmPeer), { headers: authHeaders() });
-    const { msgs = [] } = await r.json();
+    if (r.status === 401) return handleSignOut(true);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    const msgs = d.msgs || [];
     const th = document.getElementById('dm-thread');
     if (th.dataset.n === String(msgs.length)) return;
     th.dataset.n = String(msgs.length);
-    th.innerHTML = '';
-    msgs.forEach((m) => {
-      const d = document.createElement('div');
-      d.className = 'dm-msg' + (m.from === me() ? ' me' : '');
-      d.textContent = m.text || m.ct || '';
-      th.appendChild(d);
+    th.innerHTML = msgs.length ? '' : '<p class="dm-note">Henüz mesaj yok. Merhaba de!</p>';
+    msgs.forEach(m => {
+      const el = document.createElement('div');
+      el.className = 'dm-msg' + (m.from === me() ? ' me' : '');
+      el.textContent = m.text ?? '🔒 Eski şifreli mesaj';
+      th.appendChild(el);
     });
-    if (!msgs.length) {
-      th.innerHTML = '<p class="dm-note">Henüz mesaj yok. Merhaba de!</p>';
-    }
     th.scrollTop = th.scrollHeight;
-  } catch {}
+  } catch (err) {
+    clearInterval(dmTimer);
+    showToast(err.message || 'Mesajlar yüklenemedi.');
+  }
 }
 
 function dmShow(view) {
@@ -1179,40 +1140,40 @@ function dmShow(view) {
   document.getElementById('dm-title').textContent = chat ? '@' + dmPeer : 'Mesajlar';
 }
 
-window.openDM = async function() {
+window.openDM = async function(peer) {
   if (!requireAuth('Mesajları görmek')) return;
   document.getElementById('dm-modal').style.display = 'flex';
+  loadUsers();
+  if (typeof peer === 'string' && peer) return dmOpen(peer);
   dmShow('list');
-  const box = document.getElementById('dm-suggestions-box');
-  if (box) { box.style.display = 'none'; box.innerHTML = ''; }
-  fetchUsersCache();
-
+  document.getElementById('dm-suggest').innerHTML = '';
+  const box = document.getElementById('dm-convos');
   try {
     const r = await fetch('/api/messages', { headers: authHeaders() });
-    const { conversations = {} } = await r.json().catch(() => ({}));
-    const names = Object.keys(conversations).sort((a, b) => conversations[b] - conversations[a]);
-    document.getElementById('dm-convos').innerHTML = names.length
-      ? names.map(n => `<button type="button" class="dm-convo" data-user="${escapeHtml(n)}" onclick="dmOpen(this.dataset.user)"><i class="fa-solid fa-circle-user"></i> ${escapeHtml(n)} <small>${timeAgo(conversations[n])}</small></button>`).join('')
+    if (r.status === 401) return handleSignOut(true);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    const c = d.conversations || {};
+    const names = Object.keys(c).sort((a, b) => c[b] - c[a]);
+    box.innerHTML = names.length
+      ? names.map(n => `<button type="button" class="dm-convo" data-user="${escapeHtml(n)}" onclick="dmOpen(this.dataset.user)"><i class="fa-solid fa-circle-user"></i> @${escapeHtml(n)} <small>${timeAgo(c[n])}</small></button>`).join('')
       : '<p class="dm-note">Henüz sohbet yok. Yukarıya bir kullanıcı adı yazıp başla.</p>';
-  } catch {
-    document.getElementById('dm-convos').innerHTML = '<p class="dm-note">Sohbetler yüklenemedi.</p>';
+  } catch (err) {
+    box.innerHTML = `<p class="dm-note">${escapeHtml(err.message || 'Mesajlar yüklenemedi.')}</p>`;
   }
 };
-
 window.dmBack = () => openDM();
 
 window.dmOpen = async function(name) {
-  dmPeer = String(name).toLowerCase().trim().replace(/^@/, '');
+  dmPeer = String(name).toLowerCase();
   dmShow('chat');
   const th = document.getElementById('dm-thread');
-  th.innerHTML = ''; th.dataset.n = '';
+  th.innerHTML = '';
+  th.dataset.n = '';
   await dmLoad();
-  dmTimer = setInterval(dmLoad, 3000);
-  const input = document.getElementById('dm-input');
-  if (input) {
-    input.value = '';
-    input.focus();
-  }
+  clearInterval(dmTimer);
+  dmTimer = setInterval(dmLoad, 6000);
+  document.getElementById('dm-input').focus();
 };
 
 window.dmOpenFromInput = function() {
@@ -1220,23 +1181,11 @@ window.dmOpenFromInput = function() {
   const v = input.value.trim().replace(/^@/, '').toLowerCase();
   if (!v) return;
   if (v === me()) return showToast('Kendine mesaj gönderemezsin.');
-
-  // Kullanıcı cihazın önbelleğinde var mı diye kontrol et (telefon işlemcisinde kontrol)
-  if (cachedUsers.length > 0 && !cachedUsers.map(u => u.toLowerCase()).includes(v)) {
-    const closest = findClosestUsers(v, 4);
-    const box = document.getElementById('dm-suggestions-box');
-    if (closest.length > 0 && box) {
-      box.style.display = 'block';
-      box.innerHTML = `
-        <div class="suggestion-title" style="color: #ef4444;"><i class="fa-solid fa-circle-exclamation"></i> "@${escapeHtml(v)}" kullanıcısı bulunamadı. Bunu mu demek istediniz?</div>
-        <div>${closest.map(u => `<span class="suggestion-chip" onclick="selectDmUser('${escapeHtml(u)}')"><i class="fa-solid fa-user"></i> @${escapeHtml(u)}</span>`).join('')}</div>
-      `;
-      return;
-    }
-  }
-
-  input.value = '';
-  dmOpen(v);
+  if (allUsers.includes(v) || !allUsers.length) { input.value = ''; return dmOpen(v); }
+  const s = suggest(v, 3);
+  document.getElementById('dm-suggest').innerHTML = s.length
+    ? `<p class="dm-note">“${escapeHtml(v)}” bulunamadı. Şunu mu demek istedin?</p>` + s.map(userBtn).join('')
+    : `<p class="dm-note">“${escapeHtml(v)}” adında bir kullanıcı yok.</p>`;
 };
 
 window.dmSend = async function() {
@@ -1245,25 +1194,15 @@ window.dmSend = async function() {
   if (!text || !dmPeer) return;
   input.disabled = true;
   try {
-    const r = await fetch('/api/messages', {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ to: dmPeer, text })
-    });
+    const r = await fetch('/api/messages', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ to: dmPeer, text }) });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'Mesaj gönderilemedi.');
+    if (!r.ok) throw new Error(d.error);
     input.value = '';
     document.getElementById('dm-thread').dataset.n = '';
     await dmLoad();
-  } catch (err) {
-    showToast(err.message || 'Mesaj gönderilemedi.');
-  }
+  } catch (err) { showToast(err.message || 'Mesaj gönderilemedi.'); }
   input.disabled = false;
   input.focus();
 };
 
-window.closeDM = () => {
-  clearInterval(dmTimer);
-  dmPeer = null;
-  document.getElementById('dm-modal').style.display = 'none';
-};
+window.closeDM = () => { clearInterval(dmTimer); dmPeer = null; document.getElementById('dm-modal').style.display = 'none'; };

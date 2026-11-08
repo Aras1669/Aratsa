@@ -2,7 +2,8 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
   <title>Aratsa</title>
   <link rel="icon" href="icon-light.png" type="image/png" media="(prefers-color-scheme: light)">
   <link rel="icon" href="icon-dark.png" type="image/png" media="(prefers-color-scheme: dark)">
@@ -13,23 +14,9 @@
 </head>
 <body>
 
-  <!-- MOBİL ÜST ÇUBUK (Sadece mobilde görünür) -->
-  <header class="mobile-topbar">
-    <div class="logo">
-      <span class="logo-text">Aratsa</span>
-    </div>
-    <div class="mobile-topbar-actions">
-      <button type="button" class="mob-icon-btn" onclick="handleNavClick('notifications', this)" title="Bildirimler">
-        <i class="fa-regular fa-heart"></i>
-      </button>
-      <button type="button" class="mob-icon-btn" onclick="openDM()" title="Mesajlar">
-        <i class="fa-regular fa-paper-plane"></i>
-      </button>
-    </div>
-  </header>
-
   <div class="app-container">
-    <!-- SOL KENAR ÇUBUĞU (SIDEBAR - Masaüstü) -->
+    <header class="mobile-top"><span class="logo-text">Aratsa</span><div><button type="button" class="icon-btn" onclick="handleNavClick('notifications')" aria-label="Bildirimler"><i class="fa-regular fa-heart"></i></button><button type="button" class="icon-btn" onclick="openDM()" aria-label="Mesajlar"><i class="fa-regular fa-paper-plane"></i></button></div></header>
+    <!-- SOL KENAR ÇUBUĞU (SIDEBAR) -->
     <aside class="sidebar">
       <div class="logo">
         <span class="logo-text">Aratsa</span>
@@ -91,7 +78,7 @@
         </section>
       </div>
 
-      <!-- SAĞ KENAR (Masaüstü Öneriler) -->
+      <!-- SAĞ KENAR -->
       <aside class="suggestions-sidebar">
         <div class="account-card" id="sidebar-account-box">
           <div class="account-avatar"><i class="fa-solid fa-user"></i></div>
@@ -113,25 +100,6 @@
       </aside>
     </main>
   </div>
-
-  <!-- MOBİL ALT MENÜ (Sadece mobilde görünür) -->
-  <nav class="mobile-bottom-nav">
-    <button type="button" class="mob-nav-btn active" onclick="handleNavClick('home', this)" title="Ana Sayfa">
-      <i class="fa-solid fa-house"></i>
-    </button>
-    <button type="button" class="mob-nav-btn" onclick="handleNavClick('search', this)" title="Ara">
-      <i class="fa-solid fa-magnifying-glass"></i>
-    </button>
-    <button type="button" class="mob-nav-btn" onclick="handleCreatePostClick()" title="Paylaş">
-      <i class="fa-regular fa-square-plus"></i>
-    </button>
-    <button type="button" class="mob-nav-btn" onclick="handleNavClick('reels', this)" title="Reels">
-      <i class="fa-solid fa-clapperboard"></i>
-    </button>
-    <button type="button" class="mob-nav-btn" id="mob-profile-btn" onclick="handleProfileNavClick()" title="Profil">
-      <i class="fa-regular fa-user"></i>
-    </button>
-  </nav>
 
   <!-- GİRİŞ / KAYIT MODALI -->
   <div class="modal-overlay" id="auth-modal">
@@ -243,7 +211,7 @@
   <!-- YASAL MODALI -->
   <div class="modal-overlay" id="legal-modal"><div class="modal-box">
     <div class="modal-header"><h3>Topluluk Kuralları ve Yasal Haklar</h3><button type="button" class="close-modal-btn" onclick="closeLegalModal()"><i class="fa-solid fa-xmark"></i></button></div>
-    <div class="modal-body"><p>Aratsa’da saygılı ol; nefret içeren, taciz eden veya yasa dışı içerik paylaşma. Paylaştığın içeriklerden sen sorumlusun. Uygunsuz içerikleri “Şikayet Et” ile bildirebilirsin. Hesap açarak bu koşulları kabul etmiş olursun. Şifren tek yönlü şifrelenerek saklanır.</p></div>
+    <div class="modal-body"><p>Aratsa’da saygılı ol; nefret içeren, taciz eden veya yasa dışı içerik paylaşma. Paylaştığın içeriklerden sen sorumlusun. Uygunsuz içerikleri “Şikayet Et” ile bildirebilirsin. Hesap açarak bu koşulları kabul etmiş olursun. Mesajların ve hesap bilgilerin sunucuda saklanır; platform yöneticisi bunlara erişebilir.</p></div>
   </div></div>
 
   <!-- MİSAFİR SINIRI MODALI -->
@@ -274,39 +242,23 @@
     <div class="modal-header"><h3>Yorumlar</h3><button type="button" class="close-modal-btn" onclick="closeCommentsModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="modal-body">
       <div class="comments-list" id="comments-modal-list"></div>
-      <form class="dm-form" onsubmit="event.preventDefault(); submitPanelComment();"><input id="comments-input" placeholder="Yorum ekle..." maxlength="500" autocomplete="off"><button type="submit" class="dm-send-btn" title="Paylaş"><i class="fa-solid fa-paper-plane"></i></button></form>
+      <form class="dm-form" onsubmit="event.preventDefault(); submitPanelComment();"><input id="comments-input" placeholder="Yorum ekle..." maxlength="500" autocomplete="off"><button type="submit" class="primary-btn">Paylaş</button></form>
     </div>
   </div></div>
 
-  <!-- MESAJLAR MODALI -->
+  <!-- MESAJLAR -->
   <div class="modal-overlay" id="dm-modal"><div class="modal-box dm-box">
-    <div class="modal-header">
-      <button type="button" class="close-modal-btn" id="dm-back" onclick="dmBack()" style="display:none"><i class="fa-solid fa-arrow-left"></i></button>
-      <h3 id="dm-title">Mesajlar</h3>
-      <button type="button" class="close-modal-btn" onclick="closeDM()"><i class="fa-solid fa-xmark"></i></button>
-    </div>
+    <div class="modal-header"><button type="button" class="close-modal-btn" id="dm-back" onclick="dmBack()" style="display:none"><i class="fa-solid fa-arrow-left"></i></button><h3 id="dm-title">Mesajlar</h3><button type="button" class="close-modal-btn" onclick="closeDM()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="modal-body">
-      <!-- SOHBET LİSTESİ VE KULLANICI ARAMA -->
       <div id="dm-list-view">
-        <form class="dm-form" onsubmit="event.preventDefault(); dmOpenFromInput();">
-          <input id="dm-user-input" placeholder="Kullanıcı adı yaz..." autocomplete="off" autocapitalize="off">
-          <button type="submit" class="dm-send-btn" title="Sohbet Başlat"><i class="fa-solid fa-paper-plane"></i></button>
-        </form>
-        <!-- İstemci işlemcisiyle çalışan Fuzzy / Yakın İsim Önerileri -->
-        <div id="dm-suggestions-box" class="dm-suggestions-box" style="display: none;"></div>
+        <form class="dm-form" onsubmit="event.preventDefault(); dmOpenFromInput();"><input id="dm-user-input" placeholder="Kullanıcı adı yaz..." autocomplete="off" autocapitalize="off" oninput="dmSuggest()"><button type="submit" class="primary-btn">Mesaj</button></form>
+        <div id="dm-suggest"></div>
         <div id="dm-convos"></div>
-        <p class="dm-note"><i class="fa-solid fa-shield-halved"></i> Güvenli mesajlaşma • Topluluk kurallarına uygun sohbet edin.</p>
+        <p class="dm-note"><i class="fa-solid fa-lock"></i> Mesajlar şifrelenmez; yalnızca konuşmanın tarafları ve site yöneticisi okuyabilir.</p>
       </div>
-
-      <!-- SOHBET İÇİ PENCERESİ -->
       <div id="dm-chat-view" style="display:none">
         <div class="dm-thread" id="dm-thread"></div>
-        <form class="dm-form dm-chat-form" onsubmit="event.preventDefault(); dmSend();">
-          <input id="dm-input" placeholder="Mesaj yaz..." maxlength="1000" autocomplete="off">
-          <button type="submit" class="dm-send-btn" id="dm-send-btn" title="Gönder">
-            <i class="fa-solid fa-paper-plane"></i>
-          </button>
-        </form>
+        <form class="dm-form" onsubmit="event.preventDefault(); dmSend();"><input id="dm-input" placeholder="Mesaj yaz..." maxlength="1000" autocomplete="off"><button type="submit" class="dm-send" aria-label="Gönder"><i class="fa-solid fa-paper-plane"></i></button></form>
       </div>
     </div>
   </div></div>

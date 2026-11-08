@@ -1,17 +1,12 @@
-import { json, readBody, getUser, getKv } from '../_lib.js';
-const N = (s) => String(s || '').toLowerCase().trim();
+import { json, readBody, getUser } from '../_lib.js';
+const N = (s) => String(s || '').toLowerCase();
 const arr = async (kv, k) => JSON.parse((await kv.get(k)) || '[]');
 
 export async function onRequest({ request, env }) {
   const me = await getUser(request, env);
   if (!me) return json({ error: 'Giriş yapmalısınız.' }, 401);
-  const mine = N(me.username);
-  const kv = getKv(env, 'USERS_KV');
-  if (!kv) return json({ error: 'Sistem hatası: USERS_KV tanımlı değil.' }, 500);
-
-  if (request.method === 'GET') {
-    return json({ following: await arr(kv, 'fw:' + mine), followers: await arr(kv, 'fr:' + mine) });
-  }
+  const mine = N(me.username), kv = env.USERS_KV;
+  if (request.method === 'GET') return json({ following: await arr(kv, 'fw:' + mine), followers: await arr(kv, 'fr:' + mine) });
   const { target, action } = await readBody(request);
   const t = N(target);
   if (!t || t === mine) return json({ error: 'Geçersiz kullanıcı.' }, 400);

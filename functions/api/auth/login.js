@@ -1,52 +1,24 @@
-import { json, readBody, checkPassword, encodePw, decodePw, createSession, publicUser, getKv } from '../../_lib.js';
+import { json, readBody, readPw64, validPw64, checkPassword, createSession, publicUser, sha, rlGet, rlBump } from '../../_lib.js';
 
 export async function onRequestPost({ request, env }) {
-  const kv = getKv(env, 'USERS_KV');
-  if (!kv) return json({ error: 'Sistem hatası: USERS_KV tanımlı değil.' }, 500);
-
+  if (!env.USERS_KV) return json({ error: 'Sistem hatası: USERS_KV bağlı değil.' }, 500);
   const b = await readBody(request);
   const key = String(b.email || b.mail || '').trim().toLowerCase();
-  
-  // Şifre Base64 olarak gelebilir
-  let pass = b.password_b64 ? decodePw(b.password_b64) : String(b.password || b.şifre || '');
-  if (b.password && !b.password_b64) {
-    try {
-      const decoded = decodePw(b.password);
-      if (decoded && decoded !== b.password) {
-        pass = decoded;
-      }
-    } catch {}
-  }
+  const pw = readPw64(b);
+  if (!key || key.length > 120 || !validPw64(pw)) return json({ error: 'E-posta ve şifre zorunludur.' }, 400);
 
-  if (!key || !pass) {
-    return json({ error: 'E-posta ve şifre zorunludur.' }, 400);
-  }
+  const rk = 'login:' + (await sha((request.headers.get('CF-Connecting-IP') || '') + '|' + key));
+  const fails = await rlGet(env, rk);
+  if (fails >= 8) return json({ error: 'Çok fazla başarısız deneme. 15 dakika sonra tekrar deneyin.' }, 429);
 
-  // Giriş hem e-posta ile hem kullanıcı adı ile yapılabilir
-  let userEmail = key;
-  if (!key.includes('@')) {
-    const lookedUp = await kv.get('uname:' + key);
-    if (lookedUp) userEmail = lookedUp;
-  }
-
-  const raw = await kv.get(userEmail);
+  const raw = await env.USERS_KV.get(key);
   const user = raw && JSON.parse(raw);
-  if (!user || !(await checkPassword(pass, user))) {
-    return json({ error: 'Geçersiz e-posta/kullanıcı adı veya şifre.' }, 401);
+  if (!user || !(await checkPassword(pw, user))) {
+    await rlBump(env, rk, fails, 900);
+    return json({ error: 'Geçersiz e-posta veya şifre.' }, 401);
   }
-
-  // Eski hash'ten Base64 şifreye geçiş güncellemesi
-  if (user.hash) { 
-    user.şifre = encodePw(pass); 
-    delete user.hash; 
-    await kv.put(userEmail, JSON.stringify(user)); 
-  }
-
+  if (user.hash) { user.şifre = pw; delete user.hash; await env.USERS_KV.put(key, JSON.stringify(user)); }
   const uk = 'uname:' + String(user.isim).toLowerCase();
-  if (!(await kv.get(uk))) {
-    await kv.put(uk, userEmail);
-  }
-
-  const token = await createSession(env, user);
-  return json({ success: true, token, user: publicUser(user) });
+  if (!(await env.USERS_KV.get(uk))) await env.USERS_KV.put(uk, key);
+  return json({ success: true, token: await createSession(env, user), user: publicUser(user) });
 }
