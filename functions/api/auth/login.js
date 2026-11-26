@@ -10,10 +10,11 @@ export async function onRequestPost({ request, env }) {
   const rk = 'giris:' + (await sha((request.headers.get('CF-Connecting-IP') || '') + '|' + mail));
   if (await limited(env, rk, 8)) return json({ error: 'Çok fazla başarısız deneme. 15 dakika sonra tekrar deneyin.' }, 429);
 
-  const u = await env.DB.prepare('SELECT id, kullanici_adi, eposta, sifre_base64 FROM kullanicilar WHERE eposta = ?').bind(mail).first();
+  const u = await env.DB.prepare('SELECT id, kullanici_adi, eposta, sifre_base64, durum FROM kullanicilar WHERE eposta = ?').bind(mail).first();
   if (!u || !safeEq(pw, u.sifre_base64)) {
     await bump(env, rk, 900e3);
     return json({ error: 'Geçersiz e-posta veya şifre.' }, 401);
   }
+  if (u.durum !== 'aktif') return json({ error: 'Hesabınız askıya alınmış.' }, 403);
   return json({ success: true, token: await createSession(env, u.id), user: pub(u) });
 }

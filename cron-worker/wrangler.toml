@@ -1,0 +1,9 @@
+name = "aratsa-temizlik"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+SITE_URL = "https://aratsa.pages.dev"
+
+[triggers]
+crons = ["0 * * * *"]

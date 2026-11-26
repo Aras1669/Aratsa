@@ -1,7 +1,6 @@
-import { json, readBody, getUser, now, ago } from '../_lib.js';
+import { json, readBody, getUser, now, ago, mediaOk } from '../_lib.js';
 import { temizle } from '../_cloud.js';
 
-const OK_URL = /^https:\/\/(res\.cloudinary\.com|images\.unsplash\.com)\/[^\s"'<>]{1,900}$/i;
 
 // Veritabanı satırları -> istemcinin beklediği biçim (başkasının kimliği ve beğenen listesi gitmez)
 const shape = (posts, comments, liked, uid) => posts.map((p) => ({
@@ -31,8 +30,7 @@ export async function onRequestPost({ request, env }) {
   if (!me) return json({ error: 'Gönderi paylaşmak için giriş yapmalısınız.' }, 401);
   const b = await readBody(request);
   const url = String(b.media_url || '');
-  if (!OK_URL.test(url)) return json({ error: 'Geçerli bir Cloudinary medya bağlantısı gerekli.' }, 400);
-  if (env.CLOUDINARY_CLOUD_NAME && /res\.cloudinary\.com/i.test(url) && !url.startsWith(`https://res.cloudinary.com/${env.CLOUDINARY_CLOUD_NAME}/`)) return json({ error: 'Medya bu hesaba ait değil.' }, 400);
+  if (!mediaOk(env, url)) return json({ error: 'Geçerli bir Cloudinary medya bağlantısı gerekli.' }, 400);
 
   const sayi = await env.DB.prepare('SELECT COUNT(*) AS n FROM gonderiler WHERE kullanici_id = ? AND tarih > ?').bind(me.id, ago(864e5)).first();
   if (sayi.n >= 20) return json({ error: 'Günlük sınır: günde en fazla 20 gönderi paylaşabilirsiniz.' }, 429);

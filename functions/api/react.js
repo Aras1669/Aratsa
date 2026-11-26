@@ -1,10 +1,12 @@
-// /api/react: beğeni, yorum, silme isteği, şikayet (hepsi oturum anahtarı ister)
-import { json, readBody, getUser, now } from '../_lib.js';
+// /api/react: beğeni, yorum, silme isteği (hepsi oturum anahtarı ister). Şikayet: /api/sikayet
+import { json, readBody, getUser, now, limited, bump } from '../_lib.js';
 
 export async function onRequestPost({ request, env }) {
   const user = await getUser(request, env);
   if (!user) return json({ error: 'Oturum geçersiz, lütfen tekrar giriş yapın.' }, 401);
   const { action, id, text, reason } = await readBody(request);
+  if (await limited(env, 'react:' + user.id, 60)) return json({ error: 'Çok hızlı işlem yapıyorsunuz, biraz bekleyin.' }, 429);
+  await bump(env, 'react:' + user.id, 60e3);
   const db = env.DB;
   const post = typeof id === 'string' ? await db.prepare('SELECT id, kullanici_id FROM gonderiler WHERE id = ? AND silinme_istegi IS NULL').bind(id).first() : null;
   if (!post) return json({ error: 'Gönderi bulunamadı.' }, 404);
@@ -21,6 +23,8 @@ export async function onRequestPost({ request, env }) {
   if (action === 'comment') {
     const t = String(text || '').trim().slice(0, 500);
     if (!t) return json({ error: 'Yorum boş olamaz.' }, 400);
+    if (await limited(env, 'yorum:' + user.id, 10)) return json({ error: 'Çok hızlı yorum yazıyorsunuz.' }, 429);
+    await bump(env, 'yorum:' + user.id, 60e3);
     const cid = 'c_' + crypto.randomUUID().replaceAll('-', '').slice(0, 10), at = now();
     await db.prepare('INSERT INTO yorumlar (id, gonderi_id, kullanici_id, kullanici_adi, metin, tarih) VALUES (?,?,?,?,?,?)').bind(cid, id, user.id, user.username, t, at).run();
     return json({ success: true, comment: { id: cid, username: user.username, text: t, created_at: at, mine: true } });
@@ -29,10 +33,6 @@ export async function onRequestPost({ request, env }) {
     if (post.kullanici_id !== user.id) return json({ error: 'Sadece kendi gönderini silebilirsin.' }, 403);
     // Hemen silinmez: akıştan kalkar, satır ve Cloudinary dosyası 24 saat durur, sonra temizle() siler
     await db.prepare('UPDATE gonderiler SET silinme_istegi = ? WHERE id = ?').bind(now(), id).run();
-    return json({ success: true });
-  }
-  if (action === 'report') {
-    await db.prepare('INSERT OR REPLACE INTO sikayetler (gonderi_id, kullanici_id, sebep, tarih) VALUES (?,?,?,?)').bind(id, user.id, String(reason || '').slice(0, 100), now()).run();
     return json({ success: true });
   }
   return json({ error: 'Geçersiz işlem.' }, 400);

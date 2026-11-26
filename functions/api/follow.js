@@ -1,4 +1,4 @@
-import { json, readBody, getUser, N } from '../_lib.js';
+import { json, readBody, getUser, N, limited, bump } from '../_lib.js';
 
 export async function onRequest({ request, env }) {
   const me = await getUser(request, env);
@@ -11,6 +11,8 @@ export async function onRequest({ request, env }) {
     ])).map((r) => r.results.map((x) => x.n));
     return json({ following: a, followers: b });
   }
+  if (await limited(env, 'takip:' + me.id, 30)) return json({ error: 'Çok hızlı işlem yapıyorsunuz, biraz bekleyin.' }, 429);
+  await bump(env, 'takip:' + me.id, 60e3);
   const { target, action } = await readBody(request);
   const t = N(target).slice(0, 40);
   if (!t || t === mine) return json({ error: 'Geçersiz kullanıcı.' }, 400);

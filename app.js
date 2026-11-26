@@ -160,23 +160,21 @@ window.handleAuthSubmit = async function(e) {
       errorElem.style.display = 'block';
       return;
     }
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-    pendingRegistration = {
-      email: email.toLowerCase(),
-      username: username,
-      password: password,
-      code: verificationCode
-    };
-
-    document.getElementById('auth-form').style.display = 'none';
-    document.getElementById('verify-step-box').style.display = 'block';
-    document.getElementById('verify-email-desc').textContent = `${email} adresine gönderilen 6 haneli onay kodunu girin:`;
-    document.getElementById('verify-code-input').value = '';
-    document.getElementById('verify-code-input').focus();
-
-    alert(`📧 [Cloudflare E-posta Doğrulama Simülasyonu]\n\nSayın ${username},\nAratsa onay kodunuz: ${verificationCode}`);
-    showToast(`Doğrulama kodu: ${verificationCode}`);
+    pendingRegistration = { email: email.toLowerCase(), username, password };
+    submitBtn.disabled = true;
+    try {
+      await requestCode('kayit', pendingRegistration.email, username);
+      document.getElementById('auth-form').style.display = 'none';
+      document.getElementById('verify-step-box').style.display = 'block';
+      document.getElementById('verify-email-desc').textContent = `${email} adresine gönderilen 6 haneli onay kodunu girin:`;
+      document.getElementById('verify-code-input').value = '';
+      document.getElementById('verify-code-input').focus();
+    } catch (err) {
+      pendingRegistration = null;
+      errorElem.textContent = err.message;
+      errorElem.style.display = 'block';
+    }
+    submitBtn.disabled = false;
     return;
   }
 
@@ -226,13 +224,6 @@ window.confirmVerificationCode = async function() {
     return;
   }
 
-  if (enteredCode !== pendingRegistration.code) {
-    if (verifyError) {
-      verifyError.textContent = 'Hatalı kod girdiniz! Lütfen e-postanıza gelen kodu kontrol edin.';
-      verifyError.style.display = 'block';
-    }
-    return;
-  }
 
   try {
     // Cloudflare Workers KV / D1 kayıt isteği
@@ -242,6 +233,7 @@ window.confirmVerificationCode = async function() {
       body: JSON.stringify({
         email: pendingRegistration.email,
         pw64: toB64(pendingRegistration.password),
+        code: enteredCode,
         username: pendingRegistration.username
       })
     });
@@ -490,7 +482,7 @@ function createPostElement(post) {
   const mediaHTML = isVideo ? `
     <video src="${escapeHtml(post.media_url)}" controls playsinline class="post-media"></video>
   ` : `
-    <img src="${escapeHtml(post.media_url)}" alt="Post" class="post-media" onerror="this.src='https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000';">
+    <img src="${escapeHtml(post.media_url)}" alt="Post" class="post-media" onerror="this.onerror=null;this.src='icon-512.png';">
     <div class="floating-heart"><i class="fa-solid fa-heart"></i></div>
   `;
 
@@ -938,6 +930,7 @@ window.submitPanelComment = async function() {
 function decorateCard(card, post) {
   setCommentCount(card, post);
   const u = String(post.username || '').toLowerCase();
+  card.dataset.user = u;
   if (u && u !== me()) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'follow-btn'; b.dataset.user = u;
@@ -1001,6 +994,7 @@ renderPosts = function() {
   document.querySelectorAll('.post-media-container video').forEach(v => { v.muted = true; v.loop = true; videoIO.observe(v); });
   addGuestGate();
   refreshFollow();
+  showFeedError();
 };
 
 const _updateUI = updateUIForUser;
@@ -1012,6 +1006,7 @@ updateUIForUser = function() {
   if (lastUid !== null && uid !== lastUid) loadPostsFromCloud();
   lastUid = uid;
   loadUsers();
+  loadStories();
 };
 
 // ---- Cihazda çalışan yardımcılar (sunucuyu yormaz) ----
@@ -1022,7 +1017,7 @@ let dmPeer = null, dmTimer = null;
 function toB64(s) { return btoa(String.fromCharCode(...new TextEncoder().encode(s))); }
 function normalizeComment(c) { return { ...c, user_id: c.mine ? currentUser?.id : 'u:' + c.username }; }
 function normalizePost(p) {
-  return { ...p, user_id: p.mine ? currentUser?.id : 'u:' + p.username, liked_by: p.liked && currentUser ? [currentUser.id] : [], comments: (p.comments || []).map(normalizeComment) };
+  return { ...p, id: String(p.id).replace(/[^\w-]/g, ''), user_id: p.mine ? currentUser?.id : 'u:' + p.username, liked_by: p.liked && currentUser ? [currentUser.id] : [], comments: (p.comments || []).map(normalizeComment) };
 }
 
 // Fotoğraflar yüklenmeden önce telefonda küçültülür (hız + depolama tasarrufu)
@@ -1206,3 +1201,280 @@ window.dmSend = async function() {
 };
 
 window.closeDM = () => { clearInterval(dmTimer); dmPeer = null; document.getElementById('dm-modal').style.display = 'none'; };
+
+
+/* =========================================================
+   8. E-POSTA KODU, ŞİFRE SIFIRLAMA, HİKAYE, PROFİL, ŞİKAYET
+   ========================================================= */
+window.alert = (m) => showToast(String(m)); // tarayıcı uyarı kutuları yerine bildirim
+
+async function requestCode(amac, email, username) {
+  const r = await fetch('/api/auth/kod', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ email, amac, username }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'Kod gönderilemedi.');
+}
+window.resendVerificationCode = async function() {
+  if (!pendingRegistration) return;
+  try { await requestCode('kayit', pendingRegistration.email, pendingRegistration.username); showToast('Yeni kod gönderildi.'); }
+  catch (err) { showToast(err.message); }
+};
+
+let resetStep = 1;
+window.openReset = function() {
+  closeAuthModal();
+  resetStep = 1;
+  document.getElementById('reset-step2').style.display = 'none';
+  document.getElementById('reset-btn').textContent = 'Kod Gönder';
+  document.getElementById('reset-error').style.display = 'none';
+  document.getElementById('reset-modal').style.display = 'flex';
+};
+window.closeReset = () => { document.getElementById('reset-modal').style.display = 'none'; };
+window.resetSubmit = async function() {
+  const err = document.getElementById('reset-error'), btn = document.getElementById('reset-btn');
+  const email = document.getElementById('reset-email').value.trim().toLowerCase();
+  err.style.display = 'none';
+  btn.disabled = true;
+  try {
+    if (resetStep === 1) {
+      await requestCode('sifre', email);
+      resetStep = 2;
+      document.getElementById('reset-step2').style.display = 'block';
+      btn.textContent = 'Şifreyi Değiştir';
+      showToast('Hesap kayıtlıysa e-postana kod gönderdik.');
+    } else {
+      const r = await fetch('/api/auth/sifre', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ email, code: document.getElementById('reset-code').value.trim(), pw64: toB64(document.getElementById('reset-pw').value) }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'Şifre değiştirilemedi.');
+      closeReset();
+      showToast('Şifren değişti. Şimdi giriş yapabilirsin.');
+      openAuthModal('login');
+    }
+  } catch (e) { err.textContent = e.message; err.style.display = 'block'; }
+  btn.disabled = false;
+};
+const _switchTab = window.switchAuthTab;
+window.switchAuthTab = function(tab) { _switchTab(tab); const f = document.getElementById('forgot-link'); if (f) f.style.display = tab === 'login' ? 'block' : 'none'; };
+
+// ---- Gönderi / hikaye oluşturma ----
+let createMode = 'post';
+window.setCreateMode = function(m) {
+  createMode = m;
+  document.querySelectorAll('#create-mode .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+  document.getElementById('create-title').textContent = m === 'story' ? 'Yeni Hikaye (24 saat sonra silinir)' : 'Yeni Gönderi Paylaş';
+  document.getElementById('new-post-caption').parentElement.style.display = m === 'story' ? 'none' : '';
+};
+const _hcp = window.handleCreatePostClick;
+window.handleCreatePostClick = function() { _hcp(); setCreateMode('post'); };
+window.openStoryCreate = function() { if (!currentUser) return openAuthModal('login'); _hcp(); setCreateMode('story'); };
+
+window.submitNewPost = async function() {
+  if (!currentUser) return openAuthModal('login');
+  const progress = document.getElementById('upload-progress-box'), status = document.getElementById('upload-status-text'), btn = document.getElementById('submit-new-post');
+  if (!selectedFile) return showToast('Lütfen bir fotoğraf veya video seçin.');
+  const isVid = selectedFile.type.startsWith('video/');
+  if (isVid && selectedFile.size > 100 * 1048576) return showToast('Video en fazla 100 MB olabilir.');
+  if (!isVid && selectedFile.size > 25 * 1048576) return showToast('Fotoğraf en fazla 25 MB olabilir.');
+  btn.disabled = true; progress.style.display = 'flex'; status.textContent = 'Yükleniyor...';
+  try {
+    let url;
+    try { url = await uploadToCloudinary(selectedFile); } catch { throw new Error('Dosya yüklenemedi. Bağlantını kontrol edip tekrar dene.'); }
+    status.textContent = 'Kaydediliyor...';
+    const story = createMode === 'story';
+    const r = await fetch(story ? '/api/hikaye' : '/api/posts', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ media_url: url, media_type: isVid ? 'video' : 'image', caption: document.getElementById('new-post-caption').value.trim() }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'Kaydedilemedi.');
+    if (story) await loadStories(); else { posts.unshift(normalizePost(d.post)); renderPosts(); }
+    selectedFile = null;
+    document.getElementById('media-file-input').value = '';
+    document.getElementById('file-label-text').textContent = 'Dosya seç';
+    document.getElementById('new-post-caption').value = '';
+    closeCreateModal();
+    showToast(story ? 'Hikayen paylaşıldı, 24 saat görünecek.' : 'Gönderin paylaşıldı!');
+  } catch (err) { showToast(err.message); }
+  btn.disabled = false; progress.style.display = 'none';
+};
+
+// ---- Akış hatası ----
+let feedError = false;
+function showFeedError() {
+  document.querySelectorAll('.feed-error').forEach(e => e.remove());
+  if (!feedError) return;
+  document.querySelectorAll('.empty-state').forEach(e => { e.style.display = 'none'; });
+  const d = document.createElement('div');
+  d.className = 'guest-gate feed-error';
+  d.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><h3>Gönderiler yüklenemedi</h3><p>Bağlantını kontrol edip tekrar dene.</p><button type="button" class="primary-btn" onclick="loadPostsFromCloud()">Tekrar dene</button>';
+  document.getElementById('posts-stream').appendChild(d);
+}
+async function loadPostsFromCloud() {
+  feedError = false;
+  try {
+    const r = await fetch('/api/posts', { headers: authHeaders() });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    posts = Array.isArray(data) ? data.map(normalizePost) : [];
+  } catch { posts = []; feedError = true; }
+  renderPosts();
+  if (!feedError && location.hash && !window.hashDone) {
+    window.hashDone = true;
+    document.querySelector(`[data-post-id="${CSS.escape(location.hash.slice(1))}"]`)?.scrollIntoView();
+  }
+}
+
+// ---- Hikayeler ----
+let stories = [], svGroups = [], svG = 0, svI = 0, svTimer = null;
+const SEEN = 'aratsa_seen_stories';
+const seenSet = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN) || '[]')); } catch { return new Set(); } };
+
+async function loadStories() {
+  stories = [];
+  if (currentUser) {
+    try { const r = await fetch('/api/hikaye', { headers: authHeaders() }); if (r.ok) stories = await r.json(); } catch {}
+  }
+  renderStories();
+}
+function groupStories() {
+  const g = {}, sd = seenSet();
+  stories.forEach(s => (g[s.username.toLowerCase()] ||= { user: s.username, items: [], mine: s.mine }).items.push(s));
+  return Object.values(g)
+    .sort((a, b) => (b.mine - a.mine) || (myFollowing.has(b.user.toLowerCase()) - myFollowing.has(a.user.toLowerCase())) || a.user.localeCompare(b.user))
+    .map(x => ({ ...x, allSeen: x.items.every(i => sd.has(i.id)) }));
+}
+function renderStories() {
+  const bar = document.getElementById('stories-bar');
+  if (!bar) return;
+  bar.style.display = currentUser ? '' : 'none';
+  if (!currentUser) return;
+  bar.innerHTML = '<button type="button" class="st-bubble" data-add="1"><span class="st-ring add"><i class="fa-solid fa-plus"></i></span><span class="st-name">Hikaye ekle</span></button>'
+    + groupStories().map((g, i) => `<button type="button" class="st-bubble" data-g="${i}"><span class="st-ring${g.allSeen ? ' seen' : ''}"><i class="fa-solid fa-user"></i></span><span class="st-name">${g.mine ? 'Hikayen' : escapeHtml(g.user)}</span></button>`).join('');
+  bar.onclick = e => { const b = e.target.closest('.st-bubble'); if (b) b.dataset.add ? openStoryCreate() : openStory(Number(b.dataset.g)); };
+}
+window.openStory = function(g) { svGroups = groupStories(); svG = g; svI = 0; document.getElementById('story-viewer').style.display = 'flex'; document.body.classList.add('no-scroll'); showStory(); };
+function showStory() {
+  clearTimeout(svTimer);
+  const grp = svGroups[svG], s = grp?.items[svI];
+  if (!s) return closeStory();
+  const sd = seenSet(); sd.add(s.id);
+  try { localStorage.setItem(SEEN, JSON.stringify([...sd].slice(-300))); } catch {}
+  document.getElementById('sv-user').textContent = '@' + grp.user;
+  document.getElementById('sv-user').onclick = () => { closeStory(); openProfile(grp.user); };
+  document.getElementById('sv-time').textContent = timeAgo(s.created_at);
+  const act = document.getElementById('sv-action');
+  act.textContent = s.mine ? 'Sil' : 'Şikayet Et'; act.dataset.id = s.id; act.dataset.mine = s.mine ? '1' : '';
+  document.getElementById('sv-bars').innerHTML = grp.items.map((_, k) => `<span class="sv-bar ${k < svI ? 'done' : k === svI ? 'run' : ''}"><i></i></span>`).join('');
+  const bar = () => (ms) => document.querySelector('.sv-bar.run')?.style.setProperty('--d', ms + 'ms');
+  const box = document.getElementById('sv-media');
+  box.innerHTML = '';
+  const isV = s.media_type === 'video';
+  const el = document.createElement(isV ? 'video' : 'img');
+  el.className = 'sv-el'; el.src = s.media_url; el.onerror = () => storyStep(1);
+  if (isV) {
+    el.playsInline = true; el.onended = () => storyStep(1);
+    el.onloadedmetadata = () => bar()(el.duration * 1000);
+    el.play().catch(() => { el.muted = true; el.play().catch(() => {}); });
+  } else {
+    el.alt = 'Hikaye';
+    el.onload = () => { bar()(5000); svTimer = setTimeout(() => storyStep(1), 5000); };
+  }
+  box.appendChild(el);
+}
+window.storyStep = function(d) {
+  svI += d;
+  if (svI < 0) { if (svG === 0) svI = 0; else { svG--; svI = svGroups[svG].items.length - 1; } }
+  else if (svI >= svGroups[svG].items.length) { svG++; svI = 0; }
+  if (svG >= svGroups.length) return closeStory();
+  showStory();
+};
+window.closeStory = function() {
+  clearTimeout(svTimer);
+  document.getElementById('sv-media').innerHTML = '';
+  document.getElementById('story-viewer').style.display = 'none';
+  document.body.classList.remove('no-scroll');
+  renderStories();
+};
+window.storyAction = async function() {
+  const a = document.getElementById('sv-action'), id = a.dataset.id;
+  if (a.dataset.mine) {
+    if (!confirm('Bu hikayeyi silmek istediğine emin misin?')) return;
+    try { await fetch('/api/hikaye?id=' + encodeURIComponent(id), { method: 'DELETE', headers: authHeaders() }); stories = stories.filter(s => s.id !== id); showToast('Hikaye silindi.'); } catch { showToast('Silinemedi.'); }
+    closeStory();
+  } else {
+    closeStory();
+    reportTarget = { tur: 'hikaye', id };
+    document.getElementById('report-modal').style.display = 'flex';
+  }
+};
+
+// ---- Şikayet (D1 > sikayetler) ----
+let reportTarget = null;
+window.submitReport = async function(reason) {
+  const t = reportTarget || { tur: 'gonderi', id: reportPostId };
+  try {
+    const r = await fetch('/api/sikayet', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ tur: t.tur, id: t.id, sebep: reason }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'Şikayet gönderilemedi.');
+    showToast('Şikayetin alındı, teşekkürler.');
+  } catch (err) { showToast(err.message); }
+  reportTarget = null;
+  closeReportModal();
+};
+
+// ---- Profil (yalnızca giriş yapmış kullanıcılar) ----
+window.closeProfile = () => { document.getElementById('profile-modal').style.display = 'none'; };
+window.handleProfileNavClick = () => openProfile(me());
+window.openProfile = async function(name) {
+  if (!currentUser) return openAuthModal('login');
+  const body = document.getElementById('prof-body');
+  document.getElementById('prof-title').textContent = '@' + String(name).toLowerCase();
+  body.innerHTML = '<p class="dm-note">Yükleniyor...</p>';
+  document.getElementById('profile-modal').style.display = 'flex';
+  try {
+    const r = await fetch('/api/profil?u=' + encodeURIComponent(String(name).toLowerCase()), { headers: authHeaders() });
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 401) { closeProfile(); return handleSignOut(true); }
+    if (!r.ok) throw new Error(d.error || 'Profil yüklenemedi.');
+    renderProfile(d);
+  } catch (err) { body.innerHTML = `<p class="dm-note">${escapeHtml(err.message)}</p>`; }
+};
+function renderProfile(d) {
+  document.getElementById('prof-title').textContent = '@' + d.username;
+  const body = document.getElementById('prof-body');
+  body.innerHTML = `<div class="prof-head"><span class="prof-avatar"><i class="fa-solid fa-user"></i></span><div class="prof-stats"><b>${d.posts.length}</b><small>gönderi</small></div><div class="prof-stats"><b id="prof-followers">${d.followers}</b><small>takipçi</small></div><div class="prof-stats"><b>${d.following}</b><small>takip</small></div></div><p class="prof-bio" id="prof-bio"></p><div class="prof-actions" id="prof-actions"></div><div class="prof-grid" id="prof-grid"></div>`;
+  const bio = document.getElementById('prof-bio'), act = document.getElementById('prof-actions');
+  bio.textContent = d.bio || (d.mine ? 'Henüz biyografi eklemedin.' : 'Biyografi yok.');
+  const mk = (txt, cls, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = txt; b.onclick = fn; act.appendChild(b); return b; };
+  if (d.mine) {
+    mk('Biyografiyi düzenle', 'mini-btn', () => {
+      bio.outerHTML = `<textarea class="bio-edit" id="bio-edit" maxlength="150" rows="3"></textarea>`;
+      const ta = document.getElementById('bio-edit'); ta.value = d.bio; ta.focus();
+      act.innerHTML = '';
+      mk('Kaydet', 'mini-btn', async () => {
+        try {
+          const r = await fetch('/api/profil', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ bio: ta.value }) });
+          if (!r.ok) throw new Error();
+          showToast('Biyografin güncellendi.'); openProfile(d.username);
+        } catch { showToast('Kaydedilemedi.'); }
+      });
+    });
+    mk('Çıkış yap', 'mini-btn danger-btn', () => { closeProfile(); handleSignOut(); });
+  } else {
+    const lower = d.username.toLowerCase();
+    const f = mk('', 'mini-btn follow-btn', async () => {
+      const before = myFollowing.has(lower);
+      await toggleFollow(lower);
+      const cnt = document.getElementById('prof-followers');
+      if (cnt && before !== myFollowing.has(lower)) cnt.textContent = Number(cnt.textContent) + (myFollowing.has(lower) ? 1 : -1);
+    });
+    f.dataset.user = lower;
+    mk('Mesaj', 'mini-btn', () => { closeProfile(); openDM(lower); });
+    mk('Şikayet', 'mini-btn', () => { reportTarget = { tur: 'kullanici', id: lower }; closeProfile(); document.getElementById('report-modal').style.display = 'flex'; });
+  }
+  const grid = document.getElementById('prof-grid');
+  grid.innerHTML = d.posts.map(p => `<button type="button" class="prof-cell" data-id="${escapeHtml(p.id)}">${p.media_type === 'video' ? `<video src="${escapeHtml(p.media_url)}" muted preload="metadata"></video>` : `<img loading="lazy" src="${escapeHtml(p.media_url)}" alt="">`}</button>`).join('');
+  grid.onclick = e => { const c = e.target.closest('.prof-cell'); if (!c) return; closeProfile(); document.querySelector(`[data-post-id="${CSS.escape(c.dataset.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+  refreshFollow();
+}
+document.getElementById('posts-stream')?.addEventListener('click', e => {
+  const a = e.target.closest('.post-author');
+  const u = a?.closest('.post-card')?.dataset.user;
+  if (u) openProfile(u);
+});

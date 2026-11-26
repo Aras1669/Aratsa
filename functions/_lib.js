@@ -25,7 +25,7 @@ export async function createSession(env, userId) {
 export async function getUser(request, env) {
   const t = (request.headers.get('Authorization') || '').replace('Bearer ', '').trim();
   if (t.length < 40 || !env.DB) return null;
-  return env.DB.prepare('SELECT k.id AS id, k.kullanici_adi AS username, k.eposta AS email FROM oturumlar o JOIN kullanicilar k ON k.id = o.kullanici_id WHERE o.token_ozeti = ? AND o.bitis > ?').bind(await sha(t), now()).first();
+  return env.DB.prepare('SELECT k.id AS id, k.kullanici_adi AS username, k.eposta AS email FROM oturumlar o JOIN kullanicilar k ON k.id = o.kullanici_id WHERE o.token_ozeti = ? AND o.bitis > ? AND k.durum = \'aktif\'').bind(await sha(t), now()).first();
 }
 
 // Hız sınırı: limited() dolu mu bakar, bump() sayacı artırır (süre dolunca sıfırlanır)
@@ -34,3 +34,10 @@ export async function limited(env, key, max) {
   return (r?.sayi || 0) >= max;
 }
 export const bump = (env, key, ttlMs) => env.DB.prepare('INSERT INTO deneme_sayaci (anahtar, sayi, bitis) VALUES (?1, 1, ?2) ON CONFLICT(anahtar) DO UPDATE SET sayi = CASE WHEN bitis > ?3 THEN sayi + 1 ELSE 1 END, bitis = CASE WHEN bitis > ?3 THEN bitis ELSE ?2 END').bind(key, new Date(Date.now() + ttlMs).toISOString(), now()).run();
+
+export const validUsername = (s) => /^(?!\.)(?!.*\.\.)(?!.*\.$)[A-Za-z0-9_.]{3,20}$/.test(s) && !['admin', 'aratsa', 'root', 'support', 'destek', 'moderator', 'system', 'null'].includes(String(s).toLowerCase());
+// Medya yalnızca kendi Cloudinary hesabımızdan (CLOUDINARY_CLOUD_NAME tanımlıysa o hesaptan) kabul edilir
+export const mediaOk = (env, url) => {
+  const m = /^https:\/\/res\.cloudinary\.com\/([\w-]+)\/(image|video)\/upload\/[^\s"'<>]{1,800}$/i.exec(String(url));
+  return !!m && (!env.CLOUDINARY_CLOUD_NAME || m[1] === env.CLOUDINARY_CLOUD_NAME);
+};
